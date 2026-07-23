@@ -118,6 +118,25 @@
   .hs.zero b { font-size:44px; line-height:1; }
   .hs.zero span { line-height:1.4; }
 
+  /* accent stat tokens + calm motion (all killed under reduced-motion) */
+  .hs b.accent { color:var(--primary); }
+  #infStat { display:block; min-width:2ch; }
+  #infStat.flash { animation:statflash .45s ease; }
+  @keyframes statflash { 0% { opacity:.2; filter:brightness(2.2); } 100% { opacity:1; filter:none; } }
+  .hs.zero b { animation:zerobreathe 3.6s ease-in-out infinite; }
+  @keyframes zerobreathe {
+    0%,100% { text-shadow:0 0 0 rgba(255,56,92,0); }
+    50%     { text-shadow:0 0 16px rgba(255,56,92,.35); }
+  }
+  .hs b.shimmer { background:linear-gradient(110deg, var(--primary) 30%, #ff7d97 50%, var(--primary) 70%);
+                  background-size:200% 100%; -webkit-background-clip:text; background-clip:text;
+                  color:transparent; animation:statshimmer 3.4s linear infinite; }
+  @keyframes statshimmer { from { background-position:200% 0; } to { background-position:0 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    #infStat.flash, .hs.zero b, .hs b.shimmer { animation:none; }
+    .hs b.shimmer { background:none; color:var(--primary); }
+  }
+
   /* load reveal */
   .rise { opacity:0; transform:translateY(12px); animation:rise .55s ease forwards; }
   @keyframes rise { to { opacity:1; transform:none; } }
@@ -273,10 +292,10 @@
   </div>
 
   <div class="herostats rise d4">
-    <div class="hs"><b>any&nbsp;#</b><span>of skills, organized</span></div>
+    <div class="hs"><b class="accent" id="infStat">0</b><span>skills, organized</span></div>
     <div class="hs"><b>per-project</b><span>your profiles, curated skills</span></div>
-    <div class="hs zero"><b>0</b><span>dependencies<br>runtime overhead</span></div>
-    <div class="hs"><b>100%</b><span>shell, fully local</span></div>
+    <div class="hs zero"><b class="accent">0</b><span>dependencies<br>runtime overhead</span></div>
+    <div class="hs"><b class="accent shimmer">100%</b><span>local</span></div>
   </div>
 </header>
 
@@ -544,6 +563,22 @@ skills-profile pick</pre>
   setTimeout(function () {
     document.querySelectorAll('.sr:not(.in)').forEach(function (el) { el.classList.add('in'); });
   }, 1500);
+
+  // the infinity stat: race a counter upward, flash, resolve to the real answer
+  (function () {
+    var el = document.getElementById('infStat');
+    if (!el) return;
+    var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced || document.hidden) { el.textContent = '∞'; return; }
+    var t0 = performance.now(), DUR = 650, PEAK = 847;
+    (function tick(now) {
+      var p = Math.min(1, ((now || performance.now()) - t0) / DUR);
+      el.textContent = Math.round(PEAK * p);
+      if (p < 1) { requestAnimationFrame(tick); }
+      else { el.classList.add('flash'); el.textContent = '∞'; }
+    })(t0);
+    setTimeout(function () { el.textContent = '∞'; }, DUR + 200);   // failsafe
+  })();
 
   // drill nodes: expand in place; outside click or Esc collapses; one open at a time
   document.querySelectorAll('.drill').forEach(function (n) {
