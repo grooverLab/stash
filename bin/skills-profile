@@ -117,10 +117,14 @@ gh_curl() {
   else curl -fsSL "$@"; fi
 }
 
-# fetch the stash index (TSV: domain name repo path sha description) to $1
+# fetch the stash index (TSV: domain name repo path sha description) to $1.
+# Order: raw fetch (token-aware) -> gh CLI fallback (covers your own private
+# repos with zero token setup when gh is already authenticated).
 fetch_index() {
   [ -n "$STASH_REPO" ] || { echo "no STASH_REPO configured - run: skills-profile config"; return 1; }
-  gh_curl "https://raw.githubusercontent.com/$STASH_REPO/$STASH_REF/stash.index.tsv" -o "$1"
+  gh_curl "https://raw.githubusercontent.com/$STASH_REPO/$STASH_REF/stash.index.tsv" -o "$1" 2>/dev/null && return 0
+  command -v gh >/dev/null || return 1
+  gh api "repos/$STASH_REPO/contents/stash.index.tsv?ref=$STASH_REF" -H "Accept: application/vnd.github.raw" > "$1" 2>/dev/null
 }
 
 # clone URL with embedded token when configured (never echoed)
@@ -343,6 +347,11 @@ HTML
     done
     sort "$tmp" > "$out"; rm -f "$tmp"
     echo "wrote $out: $rows skills ($skipped skipped - not inside a git repo)"
+    ;;
+  _fetch-index)
+    # hidden test hook: fetch the configured stash index to $1 (default stdout)
+    out=${1:-/dev/stdout}
+    fetch_index "$out" && echo "fetched $(wc -l < "$out" | tr -d ' ') rows" >&2
     ;;
   _materialize)
     # hidden test hook: _materialize <owner/repo> <path> <sha> <domain> <name>
