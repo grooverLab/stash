@@ -113,6 +113,10 @@
   .herostats { display:flex; gap:48px; justify-content:center; margin-top:48px; flex-wrap:wrap; }
   .hs b { display:block; font-size:34px; font-weight:700; letter-spacing:-1px; line-height:1.1; }
   .hs span { color:var(--muted); font-size:14px; }
+  /* the zero cell: big 0 left, two claim lines stacked on its right */
+  .hs.zero { display:flex; align-items:center; gap:10px; text-align:left; }
+  .hs.zero b { font-size:44px; line-height:1; }
+  .hs.zero span { line-height:1.4; }
 
   /* load reveal */
   .rise { opacity:0; transform:translateY(12px); animation:rise .55s ease forwards; }
@@ -271,7 +275,7 @@
   <div class="herostats rise d4">
     <div class="hs"><b>any&nbsp;#</b><span>of skills, organized</span></div>
     <div class="hs"><b>per-project</b><span>your profiles, curated skills</span></div>
-    <div class="hs"><b>0</b><span>dependencies<br>runtime overhead</span></div>
+    <div class="hs zero"><b>0</b><span>dependencies<br>runtime overhead</span></div>
     <div class="hs"><b>100%</b><span>shell, fully local</span></div>
   </div>
 </header>
