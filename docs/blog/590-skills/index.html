@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installing 590 Claude Code skills made Claude blind</title>
+<meta name="description" content="Claude Code context bloat starts in the skill listing: past its token budget, descriptions truncate and skills stop triggering. The true story of 590 skills, and the shelves that fixed them.">
+<link rel="canonical" href="https://grooverlab.github.io/stash/blog/590-skills/">
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect x="4" y="66" width="88" height="22" rx="11" fill="%23e6e6e6"/><rect x="8" y="59" width="80" height="17" rx="9" fill="%23c2c2c2"/><rect x="8" y="40" width="80" height="17" rx="9" fill="%23a8a8a8"/><rect x="8" y="21" width="80" height="17" rx="9" fill="%23ff385c"/></svg>'>
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://grooverlab.github.io/stash/blog/590-skills/">
+<meta property="og:title" content="Installing 590 Claude Code skills made Claude blind">
+<meta property="og:description" content="Past the skill listing's token budget, descriptions die and skills stop triggering. The story of the fix: shelves.">
+<meta property="og:image" content="https://grooverlab.github.io/stash/assets/stash-lockup-light.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Installing 590 Claude Code skills made Claude blind">
+<meta name="twitter:description" content="Past the skill listing's token budget, descriptions die and skills stop triggering. The fix: shelves.">
+<meta name="twitter:image" content="https://grooverlab.github.io/stash/assets/stash-lockup-light.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Installing 590 Claude Code skills made Claude blind",
+  "description": "Claude Code context bloat starts in the skill listing: past its token budget, descriptions truncate and skills stop auto-triggering. How per-project skill loading fixes it.",
+  "author": { "@type": "Organization", "name": "grooverLab", "url": "https://github.com/grooverLab" },
+  "publisher": { "@type": "Organization", "name": "grooverLab", "url": "https://github.com/grooverLab" },
+  "datePublished": "2026-07-23",
+  "mainEntityOfPage": "https://grooverlab.github.io/stash/blog/590-skills/",
+  "image": "https://grooverlab.github.io/stash/assets/stash-lockup-light.png"
+}
+</script>
+<style>
+  :root {
+    color-scheme: light;
+    --primary:#ff385c; --primary-active:#e00b41;
+    --ink:#222222; --body:#3f3f3f; --muted:#6a6a6a;
+    --hairline:#dddddd; --hairline-soft:#ebebeb;
+    --canvas:#ffffff; --soft:#f7f7f7; --strong:#f2f2f2;
+    --code-bg:#222222; --code-fg:#ffffff;
+    --font:'Airbnb Cereal VF', Circular, Inter, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+    --mono:ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --ink:#f2f0f1; --body:#c9c7c8; --muted:#9a9899;
+    --hairline:#343233; --hairline-soft:#2a2829;
+    --canvas:#161414; --soft:#1f1d1e; --strong:#282627;
+    --code-bg:#0f0d0e; --code-fg:#f2f0f1;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { font:18px/1.65 var(--font); background:var(--canvas); color:var(--body); }
+  a { color:inherit; }
+  nav { height:80px; border-bottom:1px solid var(--hairline-soft); display:flex; align-items:center;
+        position:sticky; top:0; background:var(--canvas); z-index:20; }
+  nav .bar { max-width:1128px; margin:0 auto; padding:0 24px; width:100%;
+             display:flex; align-items:center; justify-content:space-between; }
+  .wordmark { color:var(--primary); font-weight:700; font-size:22px; display:flex; align-items:center; gap:8px; text-decoration:none; }
+  .wordmark svg { width:28px; height:28px; }
+  .navlinks { display:flex; gap:24px; font-size:16px; font-weight:600; align-items:center; }
+  .navlinks a { color:var(--muted); text-decoration:none; }
+  .navlinks a:hover { color:var(--ink); }
+  .theme-btn { width:40px; height:40px; border-radius:9999px; border:1px solid var(--hairline);
+               background:var(--canvas); color:var(--ink); cursor:pointer; font-size:16px; }
+
+  article { max-width:680px; margin:0 auto; padding:64px 24px 96px; }
+  h1 { font-size:34px; line-height:1.25; font-weight:700; color:var(--ink); letter-spacing:-.5px; }
+  .meta { color:var(--muted); font-size:14px; margin:16px 0 40px; }
+  h2 { font-size:22px; font-weight:700; color:var(--ink); margin:44px 0 12px; }
+  p { margin:0 0 20px; }
+  em { font-style:normal; color:var(--primary); }
+  code { font:.85em var(--mono); background:var(--strong); border-radius:4px; padding:1px 5px; }
+  pre { background:var(--code-bg); color:var(--code-fg); border-radius:14px; padding:20px;
+        font:14px/1.6 var(--mono); overflow-x:auto; margin:0 0 20px; }
+  pre code { background:none; padding:0; color:inherit; }
+  .cta { border:1px solid var(--hairline); border-radius:20px; padding:24px; margin-top:44px;
+         display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:space-between; }
+  .cta b { color:var(--ink); }
+  .cta a.btn { background:var(--primary); color:#fff; border-radius:9999px; padding:12px 22px;
+               font-weight:600; text-decoration:none; }
+  .cta a.btn:hover { background:var(--primary-active); }
+  footer { border-top:1px solid var(--hairline-soft); color:var(--muted); font-size:14px; }
+  footer .bar { max-width:1128px; margin:0 auto; padding:24px; display:flex; gap:16px; }
+  footer a { color:var(--muted); }
+</style>
+</head>
+<body>
+
+<nav><div class="bar">
+  <a class="wordmark" href="../../">
+    <svg viewBox="0 0 96 96"><rect x="4" y="66" width="88" height="22" rx="11" class="tray" fill="#f2f2f2" stroke="#dddddd"/><rect x="8" y="59" width="80" height="17" rx="9" fill="#dddddd"/><rect x="8" y="40" width="80" height="17" rx="9" fill="#c1c1c1"/><rect x="8" y="21" width="80" height="17" rx="9" fill="#ff385c"/></svg>
+    stash
+  </a>
+  <div class="navlinks">
+    <a href="../../">Home</a>
+    <a href="https://github.com/grooverLab/stash">GitHub</a>
+    <button class="theme-btn" id="themeBtn" title="toggle dark mode">◐</button>
+  </div>
+</div></nav>
+
+<article>
+<h1>Installing 590 Claude Code skills made Claude blind</h1>
+<p class="meta">grooverLab · July 2026 · 7 min read</p>
+
+<p>Last week I went on a skill-collecting binge. Trading, investing, marketing,
+accounting, compliance, engineering - eleven domains, four research agents
+running in parallel, provenance checks on every repo. By Tuesday night I had
+590 skills installed in <code>~/.claude/skills/</code>. It felt like owning a
+library.</p>
+
+<p>By Wednesday, Claude had stopped using most of them. Ever wonder why a
+skill you definitely installed never triggers? I found out the hard way:
+Claude Code context bloat is not about your conversation - it starts in the
+skill listing itself.</p>
+
+<h2>The part nobody tells you</h2>
+
+<p>Claude Code loads every skill in the global directory into every session.
+Each skill contributes one line - its name and description - to a listing in
+the system prompt. That listing has a budget: roughly 1% of the context
+window.</p>
+
+<p>Blow past the budget and Claude Code does not complain. It quietly
+truncates. Descriptions shrink, then vanish. The overflow renders as bare
+names.</p>
+
+<p>Here is why that matters. Auto-triggering - the thing that makes skills
+feel magical - runs on descriptions. When I ask "is my COT positioning crowded
+on gold futures," Claude matches those words against skill descriptions and
+pulls in <code>cot-contrarian-detector</code>. Strip the description and the
+match dies. A name-only skill is a book with the spine label ripped off.</p>
+
+<p>So the paradox: <em>every skill I installed made Claude a little more
+blind.</em> The budget stays fixed. The descriptions competing for it grow.
+The more I owned, the less Claude could see. My trading sessions carried
+<code>churn-prevention</code> and <code>popup-cro</code> with full
+descriptions while <code>backtest-expert</code> sat nameless in the
+overflow.</p>
+
+<h2>The fixes that don't fix</h2>
+
+<p>Deleting skills works, but you lose them everywhere, and I had just spent
+tokens finding them. <code>skillOverrides</code> in settings.json can demote
+skills, but it takes one key per skill - no globs - and hand-maintaining 471
+entries is a punishment. Plugins scope cleanly, but only for skills packaged
+as plugins; most of a hoard is not.</p>
+
+<p>The insight that unlocked it came from reading how discovery actually
+works: Claude Code scans exactly two places for directory skills. The global
+dir, and the current project's <code>.claude/skills/</code>. That's the whole
+mechanism. And symlinks count.</p>
+
+<h2>Shelves</h2>
+
+<p>So I stopped treating <code>~/.claude/skills/</code> as a warehouse and
+built an actual warehouse next to it:</p>
+
+<pre><code>~/.claude/skill-profiles/     the warehouse - loads nowhere by itself
+  trading/  marketing/  db/ ...
+~/.claude/skills/             global - the 53 I want everywhere
+&lt;project&gt;/.claude/skills/     per-project symlinks - the selection</code></pre>
+
+<p>A picker (terminal TUI or a browser page served by a one-shot
+<code>nc</code>) shows the warehouse as a tree. Toggle profiles or single
+skills, press enter: a diff engine links what you checked, unlinks what you
+didn't, never touches a real file, and launches <code>claude</code>. My
+trading project loads about 130 skills now. The marketing project loads 50
+different ones. Every loaded skill keeps its full description, because the
+listing finally fits its budget.</p>
+
+<p>Two shell scripts. No daemon, no database, no LLM in the loop, nothing to
+re-install - updates are a <code>git pull</code> away because everything is
+symlinks.</p>
+
+<p>I called it stash.</p>
+
+<p>Was any of this hard? Not the code. The hard part was noticing the problem
+at all, because blindness by truncation never throws an error.</p>
+
+<h2>The part where agents surprised me</h2>
+
+<p>Once the warehouse existed, an obvious idea followed: a tiny skill called
+<code>/stash</code> that lets Claude load skills just-in-time. Three steps:
+extract what the task needs (video, backtest, hiring plan), grep a generated
+index of every skill's description, link and load the winner. The index is a
+TSV; the whole skill is under fifty lines.</p>
+
+<p>Testing it taught me more than building it.</p>
+
+<p>I spawned an agent with only this: <code>/stash we are about to launch
+this project publicly and I want a short shareable launch video for it</code>.
+No paths, no hints. The agent found the skill file, read its frontmatter, saw
+it was marked user-invoked-only, and decided that meant it should walk past -
+then built the video with a completely different tool it happened to know.
+Technically defensible. Completely not what I wanted.</p>
+
+<p>The fix was one paragraph added to the skill: if the literal text
+<code>/stash</code> appears in your instructions, the user already invoked
+you; the lock only bars you from showing up uninvited. Second test, same
+prompt, byte for byte: the agent ran the funnel, grepped the index for
+"video", got four candidates across two domains, picked the launch-video
+skill on its description, linked it from the warehouse, and shipped a
+24-second video with a soundtrack.</p>
+
+<p><em>Instructions ask. Mechanisms enforce.</em> I keep re-learning that
+one.</p>
+
+<p>There was a second lesson in the grep itself. My first funnel design said
+"pick the domain, then browse it" - and a launch video task never says
+marketing. Searching by the deliverable across all domains fixed it. The
+index descriptions already contained the word "video"; I had just been
+grepping the wrong axis.</p>
+
+<h2>What I can't claim</h2>
+
+<p>stash is macOS-first (Linux needs openbsd-netcat for the browser picker).
+The migration rules that sort a flat skills directory into domains shipped
+tuned to my repos - you'll edit one case statement or build profiles by hand.
+And per-project loading cannot fix a skill whose description is bad; it just
+makes sure the description survives.</p>
+
+<p>The blindness problem, though - that one compounds quietly in every setup
+that hoards skills globally, and it will not announce itself. Check your own
+session: if your skill listing shows name-only entries, you're past the
+budget already.</p>
+
+<p>Built with Claude Code, including the launch video, which the skill system
+produced for its own launch. Shelves all the way down.</p>
+
+<div class="cta">
+  <div><b>stash</b> - per-project skill loading for Claude Code.<br>
+  Install is a clone and one script; uninstall removes two symlinks.</div>
+  <a class="btn" href="https://github.com/grooverLab/stash">Get stash on GitHub</a>
+</div>
+</article>
+
+<footer><div class="bar">
+  <span>MIT</span>
+  <a href="../../">stash</a>
+  <a href="https://github.com/grooverLab/stash">GitHub</a>
+</div></footer>
+
+<script>
+  (function () {
+    var saved = localStorage.getItem('stash-theme');
+    var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var t = saved || sys;
+    if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+    document.getElementById('themeBtn').addEventListener('click', function () {
+      var d = document.documentElement.dataset.theme === 'dark';
+      if (d) { delete document.documentElement.dataset.theme; localStorage.setItem('stash-theme','light'); }
+      else { document.documentElement.dataset.theme = 'dark'; localStorage.setItem('stash-theme','dark'); }
+    });
+  })();
+</script>
+</body>
+</html>
