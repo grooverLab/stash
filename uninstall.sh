@@ -7,6 +7,7 @@
 set -euo pipefail
 BIN="$HOME/.claude/bin"
 
+rm -f "$HOME/.claude/skills/stash" && echo "removed: ~/.claude/skills/stash"
 for f in skills-profile skills-profile-tui; do
   if [ -L "$BIN/$f" ] || [ -e "$BIN/$f" ]; then
     rm -f "$BIN/$f"

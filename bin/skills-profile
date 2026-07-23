@@ -323,8 +323,9 @@ HTML
     # them tracking the author). Skills WITHOUT one are VENDORED: copied into
     # <stash-repo>/skills/<domain>/<name> when SP_VENDOR_INTO + SP_SELF_REPO
     # are set (publish sets both), so the stash repo is self-contained.
+    [ "${1:-}" = "--out" ] && shift          # accept `index --out PATH` and `index PATH`
     out=${1:-stash.index.tsv}
-    tmp=$(mktemp); rows=0; skipped=0; vendored=0
+    tmp=$(mktemp); rows=0; skipped=0; vendored=0; localonly=0
     for pd in "$PROFILES"/*/; do
       domain=${pd%/}; domain=${domain##*/}
       for s in "$pd"*; do
@@ -350,7 +351,10 @@ HTML
             repo="$SP_SELF_REPO"; rpath="skills/$domain/$name"; sha=""
             vendored=$((vendored+1))
           else
-            skipped=$((skipped+1)); continue
+            # no vendoring context (plain `index`): keep the row as local-only
+            # so /stash and the pickers still see the skill; publish vendors it
+            repo="-"; rpath="-"; sha="-"
+            localonly=$((localonly+1))
           fi
         fi
         desc=""
@@ -367,7 +371,7 @@ HTML
       done
     done
     sort "$tmp" > "$out"; rm -f "$tmp"
-    echo "wrote $out: $rows skills ($vendored vendored into the stash repo, $skipped skipped)"
+    echo "wrote $out: $rows skills ($vendored vendored, $localonly local-only, $skipped skipped)"
     ;;
   _fetch-index)
     # hidden test hook: fetch the configured stash index to $1 (default stdout)

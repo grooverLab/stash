@@ -69,6 +69,7 @@ skills-profile pick                # choose skills; claude launches lean
 | `list` / `status` | profiles with counts / this project's live selection |
 | `migrate` | one-time: route the flat global dir into domain profiles, preview first |
 | `update` | git-pull every vendored skill repo - all projects see new content instantly |
+| `/stash <task>` | inside a Claude Code session: just-in-time loading - extracts the operative from your task, greps the catalog, loads the one skill that fits, does the task under it |
 
 All selection paths converge on one diff engine: add what you checked, remove
 what you unchecked, never touch a real file, never overwrite an existing name.

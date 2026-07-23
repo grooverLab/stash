@@ -27,6 +27,12 @@ for f in skills-profile skills-profile-tui; do
   echo "linked $BIN/$f -> $REPO/bin/$f"
 done
 
+# the /stash skill: just-in-time skill loading inside Claude Code sessions
+mkdir -p "$HOME/.claude/skills"
+rm -f "$HOME/.claude/skills/stash"
+ln -s "$REPO/skills/stash" "$HOME/.claude/skills/stash"
+echo "linked ~/.claude/skills/stash -> $REPO/skills/stash  (/stash in any session)"
+
 case ":$PATH:" in
   *":$BIN:"*) ;;
   *) echo ""
