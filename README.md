@@ -12,7 +12,7 @@ scope them per project, and keep every loaded skill's description intact.
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Shell](https://img.shields.io/badge/shell-100%25-blue)
 ![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)
-![Skills organized](https://img.shields.io/badge/skills_organized-590-ff385c)
+![Works with](https://img.shields.io/badge/skills-any_number-ff385c)
 
 **[grooverlab.github.io/stash](https://grooverlab.github.io/stash/)** - the
 interactive walkthrough: the big loop, drill-down flowcharts, light + dark.
@@ -31,7 +31,8 @@ skills-profile  ~/my-trading-project   [space] toggle  [l/h] open/close  [enter]
  + [ ] business-clevel    66 skills
 ```
 
-One `enter` later: links applied, `claude` launches with 134 skills instead of 590.
+One `enter` later: links applied, `claude` launches with the skills you chose
+instead of every skill you own.
 
 <!-- HERO GIF: vhs recording of `skills-profile pick` replaces the block above at launch -->
 
@@ -85,6 +86,58 @@ A skill loads if it sits in the global dir or the project dir. That is the
 whole mechanism - two shell scripts moving symlinks, no daemon, no database,
 no LLM. Selection state (`.claude/skills-profile.json`) is a plain-JSON cache,
 always recomputed from the links; the links are the truth.
+
+## How it works, step by step
+
+**Before stash**
+
+1. At session start, Claude Code scans exactly two places for directory
+   skills: `~/.claude/skills/` (global) and `<project>/.claude/skills/`.
+   Every folder containing a `SKILL.md` gets a line in the session's skill
+   listing.
+2. With everything flat in the global dir, every session loads every skill -
+   and past the listing's token budget, descriptions truncate to name-only.
+
+**Install - once**
+
+3. `./install.sh` creates `~/.claude/bin` and `~/.claude/skill-profiles`
+   (the warehouse) if missing, then symlinks the two commands from
+   `~/.claude/bin` into this repo. Nothing else is touched.
+
+**Organize - once**
+
+4. `skills-profile migrate --dry-run` walks every entry in
+   `~/.claude/skills/`. For each symlink it consults `profile_for()` and
+   prints `name -> profile`. Real directories are never moved - they stay
+   global.
+5. `skills-profile migrate` repeats the walk and moves each routed symlink
+   into `~/.claude/skill-profiles/<profile>/`. Your global dir shrinks to
+   the always-on set. No file contents move - only symlinks change address.
+
+**Per project - whenever you like**
+
+6. `cd` into the project, run `skills-profile pick`. The picker reads the
+   warehouse fresh (every profile, every skill) and pre-checks whatever is
+   already linked in `./.claude/skills/`.
+7. Toggle profiles or single skills; press enter. The diff engine runs: for
+   every warehouse skill - checked and absent -> create a symlink in
+   `./.claude/skills/`; unchecked and present as our symlink -> remove it;
+   anything else -> untouched. Real files are never deleted; existing names
+   are never overwritten.
+8. It records `./.claude/skills-profile.json` (recomputed from the links -
+   the links are the truth), prints `linked +N removed -N`, and launches
+   `claude`.
+9. That session's skill list = global dir + your selection. Nothing else.
+
+**Later**
+
+10. Changed your mind mid-session? Links can change but the list was read at
+    session start - restart; `claude -c` keeps your conversation.
+11. `skills-profile update` runs `git pull` in every repo under
+    `~/.claude/vendor/`. Everything downstream is symlinks, so the warehouse
+    and every project see new content instantly.
+12. `./uninstall.sh` removes the two command symlinks - warehouse,
+    selections, and state all survive.
 
 ## Skill sources it manages
 
