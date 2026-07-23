@@ -1,0 +1,51 @@
+# stash-sync - keeps your stash.index.tsv tracking upstream skill repos.
+# Ships with github.com/grooverLab/stash; lives in YOUR stash repo at
+# .github/workflows/stash-sync.yml (skills-profile publish puts it there).
+#
+# Daily: for every source repo referenced in the index, look up the current
+# head sha and re-pin the index rows. Every author update arrives as a commit
+# in YOUR repo - visible, diffable, revertable.
+#
+# Private source repos: add a STASH_TOKEN secret (fine-grained, read-only
+# Contents) and it is used automatically.
+name: stash-sync
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  repin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Re-pin index shas to upstream heads
+        env:
+          TOKEN: ${{ secrets.STASH_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -f stash.index.tsv ] || { echo "no stash.index.tsv"; exit 0; }
+          tmp=$(mktemp)
+          cp stash.index.tsv "$tmp"
+          for repo in $(cut -f3 stash.index.tsv | sort -u); do
+            if [ -n "${TOKEN:-}" ]; then
+              url="https://x-access-token:${TOKEN}@github.com/${repo}"
+            else
+              url="https://github.com/${repo}"
+            fi
+            sha=$(git ls-remote "$url" HEAD | cut -f1) || continue
+            [ -n "$sha" ] || continue
+            awk -F'\t' -v OFS='\t' -v r="$repo" -v s="$sha" '$3==r {$5=s} {print}' "$tmp" > "$tmp.new" \
+              && mv "$tmp.new" "$tmp"
+          done
+          if ! cmp -s "$tmp" stash.index.tsv; then
+            mv "$tmp" stash.index.tsv
+            git config user.name "stash-sync"
+            git config user.email "actions@users.noreply.github.com"
+            git add stash.index.tsv
+            git commit -m "stash-sync: re-pin to upstream heads"
+            git push
+          else
+            echo "index already current"
+          fi

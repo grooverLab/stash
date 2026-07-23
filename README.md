@@ -163,6 +163,34 @@ nothing to re-install.**
 - Selection changes need a session restart: the skill list is read once at
   session start. `claude -c` resumes your conversation with the fresh scan.
 
+## Cloud stash (optional)
+
+Host your curation on GitHub; skills download lazily when selected.
+
+```bash
+skills-profile publish            # creates you/my-stash (gh CLI), pushes your
+                                  # index + the auto-repin Action
+skills-profile config             # browser page: local / remote / hybrid,
+                                  # repo, sha-pinning, private-repo token
+skills-profile pick-html          # cloud skills appear with descriptions;
+                                  # Apply sparse-clones ONLY what you chose
+```
+
+- **The index** (`stash.index.tsv` in your stash repo) is the whole contract:
+  domain, name, source repo, path, pinned sha, description. `skills-profile
+  index` regenerates it from your warehouse.
+- **The Action** (`stash-sync.yml`, shipped by `publish`) re-pins the index to
+  upstream heads daily - every author update arrives as a commit in YOUR repo:
+  visible, diffable, revertable.
+- **Materialization** is a sparse partial clone - only selected skill folders
+  ever hit disk; `update` keeps working on them.
+- **Private repos**: put a fine-grained read-only token in
+  `~/.claude/stash.env` (created chmod-600 by install.sh), or paste it in the
+  config page - it posts only to 127.0.0.1 and never leaves your machine.
+- **Sharing**: anyone points `skills-profile config` at your stash repo and
+  gets your curation, lazily, on their machine. Fork it and the Action keeps
+  their copy tracking yours.
+
 ## Limits, stated plainly
 
 - macOS out of the box; Linux needs `openbsd-netcat` for the browser picker

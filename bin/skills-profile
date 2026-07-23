@@ -16,8 +16,19 @@ set -euo pipefail
 shopt -s nullglob
 SKILLS=~/.claude/skills
 PROFILES=~/.claude/skill-profiles
+VENDOR="$HOME/.claude/vendor"
 PROJ=".claude/skills"
 STATE=".claude/skills-profile.json"
+CONF="$HOME/.claude/stash.conf"
+ENVF="$HOME/.claude/stash.env"
+
+# cloud-stash config (MODE=local|remote|hybrid, STASH_REPO=owner/repo,
+# STASH_REF=branch, PIN=sha|branch) + optional GITHUB_TOKEN from the env file
+MODE=local; STASH_REPO=""; STASH_REF=main; PIN=branch
+[ -f "$CONF" ] && . "$CONF"
+[ -f "$ENVF" ] && . "$ENVF"
+GITHUB_TOKEN=${GITHUB_TOKEN:-}
+
 cmd=${1:-list}; shift || true
 
 # name-based routing (checked before path rules)
@@ -96,6 +107,49 @@ apply_selection() {
   done
   write_state
   echo "linked +$linked  removed -$removed"
+}
+
+# ---- cloud stash helpers ----------------------------------------------------
+
+# curl with the token when one is configured (private stash repos)
+gh_curl() {
+  if [ -n "$GITHUB_TOKEN" ]; then curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "$@"
+  else curl -fsSL "$@"; fi
+}
+
+# fetch the stash index (TSV: domain name repo path sha description) to $1
+fetch_index() {
+  [ -n "$STASH_REPO" ] || { echo "no STASH_REPO configured - run: skills-profile config"; return 1; }
+  gh_curl "https://raw.githubusercontent.com/$STASH_REPO/$STASH_REF/stash.index.tsv" -o "$1"
+}
+
+# clone URL with embedded token when configured (never echoed)
+repo_url() {
+  if [ -n "$GITHUB_TOKEN" ]; then echo "https://x-access-token:$GITHUB_TOKEN@github.com/$1"
+  else echo "https://github.com/$1"; fi
+}
+
+# materialize one skill from GitHub into the warehouse:
+#   $1 repo (owner/name)  $2 path-in-repo  $3 sha (may be empty)  $4 domain  $5 skill-name
+# sparse partial clone: only the selected folder's files ever hit disk.
+materialize() {
+  local repo="$1" rpath="$2" sha="$3" domain="$4" name="$5"
+  local dir="$VENDOR/$(echo "$repo" | tr '/' '_')"
+  mkdir -p "$VENDOR" "$PROFILES/$domain"
+  if [ ! -d "$dir/.git" ]; then
+    git clone --quiet --filter=blob:none --sparse "$(repo_url "$repo")" "$dir"
+    git -C "$dir" sparse-checkout set "$rpath"
+  elif [ "$(git -C "$dir" config core.sparseCheckout 2>/dev/null)" = "true" ]; then
+    git -C "$dir" sparse-checkout add "$rpath"
+  fi
+  # else: pre-existing FULL clone - the path is already on disk; never convert
+  # a full clone to sparse (it would hide every other skill's files)
+  if [ "$PIN" = "sha" ] && [ -n "$sha" ]; then
+    git -C "$dir" fetch --quiet origin "$sha" 2>/dev/null || true
+    git -C "$dir" checkout --quiet "$sha" 2>/dev/null || echo "warn: could not pin $repo@$sha, using default branch"
+  fi
+  [ -d "$dir/$rpath" ] || { echo "error: $repo has no $rpath"; return 1; }
+  ln -sfn "$dir/$rpath" "$PROFILES/$domain/$name"
 }
 
 case "$cmd" in
@@ -198,6 +252,25 @@ HTML
         done
         printf '</details>\n'
       done
+      # cloud sections: skills in the stash index not yet in the warehouse
+      IDX=""
+      if [ "$MODE" != "local" ]; then
+        IDX=$(mktemp /tmp/stash-idx.XXXXXX)
+        if fetch_index "$IDX" 2>/dev/null; then
+          printf '<h3 style="margin-top:2rem">cloud - from %s <span style="color:#e0526e;font-size:12px">(downloaded on Apply)</span></h3>\n' "$STASH_REPO"
+          cut -f1 "$IDX" | sort -u | while IFS= read -r domain; do
+            printf '<details><summary><input type="checkbox" onclick="event.stopPropagation();tog(this)"> %s <span class="cnt">cloud</span></summary>\n' "$domain"
+            awk -F'\t' -v d="$domain" '$1==d' "$IDX" | while IFS=$'\t' read -r _ name repo rpath sha desc; do
+              [ -e "$PROFILES/$domain/$name" ] && continue   # already cached locally
+              printf '<label class="sk"><input type="checkbox" name="c" value="%s/%s"> %s<br><span style="color:#777;font-size:12px;padding-left:1.4rem">%s</span></label>\n' \
+                "$domain" "$name" "$name" "$desc"
+            done
+            printf '</details>\n'
+          done
+        else
+          printf '<p style="color:#c66">cloud stash unreachable (%s@%s) - showing local only</p>\n' "$STASH_REPO" "$STASH_REF"
+        fi
+      fi
       printf '<button>Apply &amp; launch claude</button></form></body></html>\n'
     } > "$html"
     exec 3<>"$fifo"                 # hold fifo open r/w so nc starts without blocking
@@ -212,8 +285,21 @@ HTML
     exec 3>&-                        # EOF -> nc flushes response and exits
     wait $ncpid 2>/dev/null
     selfile=$(mktemp)
-    tr -d '\r' < "$reqf" | awk 'b{print} /^$/{b=1}' | tail -1 | tr '&' '\n' \
-      | grep '^p=' | sed 's/^p=//; s/%2[Ff]/\//g' > "$selfile" || true
+    body=$(tr -d '\r' < "$reqf" | awk 'b{print} /^$/{b=1}' | tail -1)
+    echo "$body" | tr '&' '\n' | grep '^p=' | sed 's/^p=//; s/%2[Ff]/\//g' > "$selfile" || true
+    # cloud selections: materialize first (sparse clone -> warehouse link), then
+    # they join the normal selection
+    if [ -n "${IDX:-}" ] && [ -f "$IDX" ]; then
+      echo "$body" | tr '&' '\n' | grep '^c=' | sed 's/^c=//; s/%2[Ff]/\//g' | while IFS=/ read -r cdomain cname; do
+        row=$(awk -F'\t' -v d="$cdomain" -v n="$cname" '$1==d && $2==n {print; exit}' "$IDX")
+        [ -n "$row" ] || continue
+        crepo=$(echo "$row" | cut -f3); cpath=$(echo "$row" | cut -f4); csha=$(echo "$row" | cut -f5)
+        echo "fetching $cdomain/$cname from $crepo..."
+        materialize "$crepo" "$cpath" "$csha" "$cdomain" "$cname" || continue
+        echo "$cdomain/$cname" >> "$selfile"
+      done
+      rm -f "$IDX"
+    fi
     apply_selection "$selfile"
     rm -f "$reqf" "$html" "$selfile" "$fifo"
     if [ -n "${CLAUDECODE:-}" ]; then
@@ -224,10 +310,175 @@ HTML
       exec claude ${SP_CLAUDE_FLAGS---dangerously-skip-permissions}
     fi
     ;;
+  index)
+    # generate stash.index.tsv from the local warehouse - run inside your stash
+    # repo checkout, commit the result. Columns:
+    #   domain <TAB> name <TAB> owner/repo <TAB> path-in-repo <TAB> sha <TAB> description
+    out=${1:-stash.index.tsv}
+    tmp=$(mktemp); rows=0; skipped=0
+    for pd in "$PROFILES"/*/; do
+      domain=${pd%/}; domain=${domain##*/}
+      for s in "$pd"*; do
+        name=${s##*/}; tgt="$s"; [ -L "$s" ] && tgt=$(readlink "$s")
+        # walk up to the enclosing git repo
+        rdir="$tgt"
+        while [ "$rdir" != "/" ] && [ ! -d "$rdir/.git" ]; do rdir=$(dirname "$rdir"); done
+        if [ "$rdir" = "/" ]; then skipped=$((skipped+1)); continue; fi
+        url=$(git -C "$rdir" remote get-url origin 2>/dev/null) || { skipped=$((skipped+1)); continue; }
+        repo=$(echo "$url" | sed -E 's#^(https://[^/]+/|git@[^:]+:)##; s#\.git$##')
+        rpath=${tgt#"$rdir"/}
+        sha=$(git -C "$rdir" rev-parse HEAD 2>/dev/null || echo "")
+        desc=""
+        if [ -f "$tgt/SKILL.md" ]; then
+          # handles inline, quoted, and folded (>, |) YAML description styles
+          desc=$(awk '
+            /^description:/ { sub(/^description:[ ]*/,""); gsub(/^[">|-]+[ ]*/,""); d=$0; grab=1; next }
+            grab { if ($0 ~ /^[ ]/) { sub(/^[ ]+/,""); d = d (d=="" ? "" : " ") $0 } else { exit } }
+            END { gsub(/^["'"'"' ]+|["'"'"' ]+$/,"",d); print d }
+          ' "$tgt/SKILL.md" | tr -d '\t' | cut -c1-160)
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$domain" "$name" "$repo" "$rpath" "$sha" "$desc" >> "$tmp"
+        rows=$((rows+1))
+      done
+    done
+    sort "$tmp" > "$out"; rm -f "$tmp"
+    echo "wrote $out: $rows skills ($skipped skipped - not inside a git repo)"
+    ;;
+  _materialize)
+    # hidden test hook: _materialize <owner/repo> <path> <sha> <domain> <name>
+    materialize "$1" "$2" "${3:-}" "$4" "$5" && echo "materialized $4/$5"
+    ;;
+  config)
+    # one-shot HTML configuration page (same bash+nc pattern as pick-html):
+    # mode, stash repo, visibility; private reveals the token bar. Token is
+    # written to ~/.claude/stash.env (chmod 600), never echoed or logged.
+    port=$((20000 + RANDOM % 40000))
+    html=$(mktemp /tmp/stash-config.XXXXXX).html
+    reqf=$(mktemp); fifo=$(mktemp -u); mkfifo "$fifo"
+    tok_note="not set"; [ -n "$GITHUB_TOKEN" ] && tok_note="saved in ~/.claude/stash.env"
+    {
+      cat <<HTML
+<!doctype html><html><head><meta charset="utf-8"><title>stash config</title><style>
+body{font:15px -apple-system,sans-serif;max-width:640px;margin:3rem auto;padding:0 1rem;background:#fff;color:#222}
+h2{letter-spacing:-.02em} .card{border:1px solid #ddd;border-radius:14px;padding:24px;margin-top:16px}
+label{display:block;margin:14px 0 4px;font-weight:600;font-size:14px}
+input[type=text],input[type=password]{width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;font:14px ui-monospace,monospace}
+.radio{margin-right:16px;font-weight:400}
+.note{color:#6a6a6a;font-size:13px;margin-top:6px}
+.note a{color:#ff385c}
+button{margin-top:20px;padding:12px 28px;font-size:15px;background:#ff385c;border:0;border-radius:8px;color:#fff;cursor:pointer}
+#tokbar{display:none} .on #tokbar{display:block}
+</style>
+<script>function vis(p){document.getElementById('card').className='card '+(p?'on':'')}</script>
+</head><body>
+<h2>stash configuration</h2>
+<form method="POST" action="http://127.0.0.1:$port/"><input type="hidden" name="done" value="1">
+<div class="card" id="card">
+  <label>Mode</label>
+  <label class="radio"><input type="radio" name="mode" value="local" $( [ "$MODE" = local ] && echo checked)> local - warehouse only</label>
+  <label class="radio"><input type="radio" name="mode" value="remote" $( [ "$MODE" = remote ] && echo checked)> remote - skills fetched from your GitHub stash</label>
+  <label class="radio"><input type="radio" name="mode" value="hybrid" $( [ "$MODE" = hybrid ] && echo checked)> hybrid - both in one picker</label>
+  <label>Stash repo (owner/repo)</label>
+  <input type="text" name="repo" value="$STASH_REPO" placeholder="you/my-stash">
+  <label>Branch</label>
+  <input type="text" name="ref" value="$STASH_REF">
+  <label>Pin</label>
+  <label class="radio"><input type="radio" name="pin" value="branch" $( [ "$PIN" = branch ] && echo checked)> follow branch</label>
+  <label class="radio"><input type="radio" name="pin" value="sha" $( [ "$PIN" = sha ] && echo checked)> pin to index shas (safer)</label>
+  <label>Visibility</label>
+  <label class="radio"><input type="radio" name="visq" value="public" onclick="vis(0)" checked> public</label>
+  <label class="radio"><input type="radio" name="visq" value="private" onclick="vis(1)"> private - needs a token</label>
+  <div id="tokbar">
+    <label>GitHub token</label>
+    <input type="password" name="token" placeholder="paste token - stored in ~/.claude/stash.env (chmod 600), leave empty to keep current">
+    <p class="note">Current token: $tok_note. Create one at
+    <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a>
+    - fine-grained, read-only Contents on your stash + skill repos is enough.
+    The token never leaves this machine: this page posts only to 127.0.0.1.</p>
+  </div>
+</div>
+<button>Save &amp; test</button></form></body></html>
+HTML
+    } > "$html"
+    exec 3<>"$fifo"
+    nc -l 127.0.0.1 "$port" <&3 > "$reqf" &
+    ncpid=$!
+    if [ -z "${SP_NO_OPEN:-}" ]; then
+      open "$html" 2>/dev/null || xdg-open "$html" 2>/dev/null || echo "open $html in your browser"
+    fi
+    echo "config page: file://$html  (waiting for Save...)"
+    until grep -q "done=1" "$reqf" 2>/dev/null; do sleep 0.2; done
+    body=$(tr -d '\r' < "$reqf" | awk 'b{print} /^$/{b=1}' | tail -1)
+    # urldecode with bash's BUILTIN printf (%b + \xHH); external printf is POSIX
+    # octal-only and leaves \x2F literal
+    getf() {
+      local raw
+      raw=$(echo "$body" | tr '&' '\n' | grep "^$1=" | head -1 | cut -d= -f2- \
+            | sed 's/+/ /g; s/%\([0-9a-fA-F][0-9a-fA-F]\)/\\x\1/g')
+      printf '%b' "$raw"
+    }
+    n_mode=$(getf mode); n_repo=$(getf repo); n_ref=$(getf ref); n_pin=$(getf pin); n_tok=$(getf token)
+    printf 'MODE=%s\nSTASH_REPO=%s\nSTASH_REF=%s\nPIN=%s\n' \
+      "${n_mode:-local}" "$n_repo" "${n_ref:-main}" "${n_pin:-branch}" > "$CONF"
+    if [ -n "$n_tok" ]; then
+      printf 'GITHUB_TOKEN=%s\n' "$n_tok" > "$ENVF"; chmod 600 "$ENVF"
+    fi
+    # re-load and server-side test
+    . "$CONF"; [ -f "$ENVF" ] && . "$ENVF"; GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    result="saved. mode=$MODE"
+    if [ "$MODE" != "local" ]; then
+      ti=$(mktemp)
+      if fetch_index "$ti" 2>/dev/null; then
+        result="saved. mode=$MODE - index OK: $(wc -l < "$ti" | tr -d ' ') skills, $(cut -f1 "$ti" | sort -u | wc -l | tr -d ' ') domains"
+      else
+        result="saved, but fetching stash.index.tsv from $STASH_REPO@$STASH_REF FAILED - check repo/branch/token"
+      fi
+      rm -f "$ti"
+    fi
+    printf 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<body style="font-family:sans-serif;max-width:600px;margin:3rem auto"><h2>%s</h2><p>Close this tab.</p></body>' "$result" >&3
+    exec 3>&-
+    wait $ncpid 2>/dev/null
+    rm -f "$reqf" "$html" "$fifo"
+    echo "$result"
+    ;;
+  publish)
+    # create/update your GitHub stash repo from the local warehouse:
+    #   skills-profile publish [--private] [repo-name]
+    # needs the gh CLI authenticated (gh auth login). Generates the index,
+    # ships the auto-repin Action, pushes, and points stash.conf at the repo.
+    command -v gh >/dev/null || { echo "needs the gh CLI (brew: gh) + gh auth login"; exit 1; }
+    gh auth status >/dev/null 2>&1 || { echo "run: gh auth login"; exit 1; }
+    visflag="--public"; [ "${1:-}" = "--private" ] && { visflag="--private"; shift; }
+    rname=${1:-my-stash}
+    owner=$(gh api user -q .login)
+    tmpd=$(mktemp -d)
+    if gh repo view "$owner/$rname" >/dev/null 2>&1; then
+      git clone --quiet "https://github.com/$owner/$rname" "$tmpd/repo"
+    else
+      gh repo create "$owner/$rname" "$visflag" --description "my stash - curated Claude Code skills, served by github.com/grooverLab/stash" >/dev/null
+      git init -q "$tmpd/repo"
+      git -C "$tmpd/repo" remote add origin "https://github.com/$owner/$rname"
+    fi
+    "$0" index "$tmpd/repo/stash.index.tsv"
+    mkdir -p "$tmpd/repo/.github/workflows"
+    tpl="$(cd "$(dirname "$(readlink "$0" || echo "$0")")/.." && pwd)/templates/stash-sync.yml"
+    [ -f "$tpl" ] && cp "$tpl" "$tmpd/repo/.github/workflows/stash-sync.yml"
+    git -C "$tmpd/repo" add -- stash.index.tsv .github 2>/dev/null
+    if git -C "$tmpd/repo" diff --cached --quiet 2>/dev/null; then
+      echo "nothing changed - $owner/$rname already current"
+    else
+      git -C "$tmpd/repo" commit -q -m "stash: index + sync action"
+      git -C "$tmpd/repo" push -q -u origin HEAD:main
+      echo "published: https://github.com/$owner/$rname"
+    fi
+    rm -rf "$tmpd"
+    # point config at it (mode untouched)
+    { grep -v '^STASH_REPO=' "$CONF" 2>/dev/null || true; echo "STASH_REPO=$owner/$rname"; } > "$CONF.tmp" && mv "$CONF.tmp" "$CONF"
+    echo "stash.conf -> STASH_REPO=$owner/$rname (set MODE via: skills-profile config)"
+    ;;
   update)
     # pull every vendored skill repo; symlinked profiles + project links see the
     # new content immediately (no relink needed)
-    VENDOR="$HOME/.claude/vendor"
     [ -d "$VENDOR" ] || { echo "no vendor dir ($VENDOR)"; exit 0; }
     for repo in "$VENDOR"/*/; do
       [ -d "$repo/.git" ] || continue
@@ -237,6 +488,6 @@ HTML
     done
     ;;
   *)
-    echo "usage: skills-profile {migrate [--dry-run] | use <p...> | off <p...> | list | status | pick | pick-html | update}"; exit 1
+    echo "usage: skills-profile {migrate [--dry-run] | use <p...> | off <p...> | list | status | pick | pick-html | update | config | index [out] | publish [--private] [name]}"; exit 1
     ;;
 esac
