@@ -145,8 +145,8 @@
   .start { border-radius:9999px; background:var(--soft); border-color:var(--hairline); color:var(--ink); font-weight:500; }
   .dec { background:var(--soft); border-color:var(--hairline); border-radius:9999px; font-weight:500; color:var(--ink); }
   .edge { display:flex; flex-direction:column; align-items:center; color:var(--muted-soft); font-size:12px; }
-  .edge::before { content:""; width:1px; height:18px; background:var(--border-strong); }
-  .edge::after { content:""; border:5px solid transparent; border-top-color:var(--border-strong); margin-top:-1px; }
+  .edge::before { content:""; width:2px; height:20px; background:var(--muted-soft); border-radius:1px; }
+  .edge::after { content:""; border:6px solid transparent; border-top-color:var(--muted-soft); margin-top:-1px; }
 
   .drill { cursor:pointer; border:1.5px solid var(--primary); transition:max-width .28s ease, box-shadow .2s; }
   .drill > .title { font-weight:600; color:var(--ink); }
@@ -168,10 +168,13 @@
   .mdec { border-radius:9999px; background:var(--soft); font-weight:500; color:var(--ink); }
   .mnote { color:var(--muted); font-size:13px; max-width:480px; text-align:center; margin-top:10px; }
   .medge { display:flex; flex-direction:column; align-items:center; color:var(--muted-soft); font-size:11px; }
-  .medge::before { content:""; width:1px; height:14px; background:var(--border-strong); }
-  .medge::after { content:""; border:4px solid transparent; border-top-color:var(--border-strong); margin-top:-1px; }
+  .medge::before { content:""; width:2px; height:16px; background:var(--muted-soft); border-radius:1px; }
+  .medge::after { content:""; border:5px solid transparent; border-top-color:var(--muted-soft); margin-top:-1px; }
   .mrow { display:flex; gap:20px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
+  /* every branch column gets its own connector stub so wrapped rows never float */
   .mcol { display:flex; flex-direction:column; align-items:center; }
+  .mcol::before { content:""; display:block; width:2px; height:14px; background:var(--muted-soft);
+                  border-radius:1px; margin:0 auto 3px; }
   .mcol > .blbl { font-size:11px; font-weight:600; margin-bottom:4px; color:var(--primary); }
 
   .loop { border:1px solid var(--hairline); border-radius:20px; padding:24px 16px 24px 48px;

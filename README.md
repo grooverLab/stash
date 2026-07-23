@@ -98,13 +98,13 @@ always recomputed from the links; the links are the truth.
 2. With everything flat in the global dir, every session loads every skill -
    and past the listing's token budget, descriptions truncate to name-only.
 
-**Install - once**
+**Install: one minute, once**
 
 3. `./install.sh` creates `~/.claude/bin` and `~/.claude/skill-profiles`
    (the warehouse) if missing, then symlinks the two commands from
    `~/.claude/bin` into this repo. Nothing else is touched.
 
-**Organize - once**
+**Organize: one command, once**
 
 4. `skills-profile migrate --dry-run` walks every entry in
    `~/.claude/skills/`. For each symlink it consults `profile_for()` and
@@ -114,7 +114,7 @@ always recomputed from the links; the links are the truth.
    into `~/.claude/skill-profiles/<profile>/`. Your global dir shrinks to
    the always-on set. No file contents move - only symlinks change address.
 
-**Per project - whenever you like**
+**Per project: the loop you will actually live in**
 
 6. `cd` into the project, run `skills-profile pick`. The picker reads the
    warehouse fresh (every profile, every skill) and pre-checks whatever is
@@ -129,7 +129,7 @@ always recomputed from the links; the links are the truth.
    `claude`.
 9. That session's skill list = global dir + your selection. Nothing else.
 
-**Later**
+**Living with it**
 
 10. Changed your mind mid-session? Links can change but the list was read at
     session start - restart; `claude -c` keeps your conversation.
