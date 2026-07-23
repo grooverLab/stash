@@ -7,15 +7,17 @@
 <meta name="description" content="Per-project skill manager for Claude Code. Load only the skills each session needs - domain profiles, TUI and browser pickers, zero dependencies, pure bash.">
 <meta name="keywords" content="claude code skills, manage claude skills, claude skills manager, claude code context bloat, claude code skills per project, organize claude skills, claude skill profiles, claude code disable skills">
 <link rel="canonical" href="https://grooverlab.github.io/stash/">
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect x="4" y="66" width="88" height="22" rx="11" fill="%23e6e6e6"/><rect x="8" y="59" width="80" height="17" rx="9" fill="%23c2c2c2"/><rect x="8" y="40" width="80" height="17" rx="9" fill="%23a8a8a8"/><rect x="8" y="21" width="80" height="17" rx="9" fill="%23ff385c"/></svg>'>
+<link rel="apple-touch-icon" href="assets/stash-icon-light.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://grooverlab.github.io/stash/">
 <meta property="og:title" content="stash - manage Claude Code skills per project">
 <meta property="og:description" content="Stop wasting context on skills your session never uses. Domain profiles + per-project loading for Claude Code. Pure shell, zero dependencies.">
-<meta property="og:image" content="https://grooverlab.github.io/stash/og.png">
+<meta property="og:image" content="https://grooverlab.github.io/stash/assets/stash-lockup-light.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="stash - manage Claude Code skills per project">
 <meta name="twitter:description" content="Stop wasting context on skills your session never uses. Domain profiles + per-project loading for Claude Code.">
-<meta name="twitter:image" content="https://grooverlab.github.io/stash/og.png">
+<meta name="twitter:image" content="https://grooverlab.github.io/stash/assets/stash-lockup-light.png">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -236,14 +238,13 @@
 
 <nav><div class="wrap">
   <a class="wordmark" href="#">
-    <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="#ff385c" stroke-width="2.6" stroke-linecap="round"/></svg>
+    <svg viewBox="0 0 96 96" aria-hidden="true"><rect x="4" y="66" width="88" height="22" rx="11" fill="var(--strong)" stroke="var(--hairline)"/><rect x="8" y="59" width="80" height="17" rx="9" fill="var(--hairline)"/><rect x="8" y="40" width="80" height="17" rx="9" fill="var(--border-strong)"/><rect x="8" y="21" width="80" height="17" rx="9" fill="var(--primary)"/></svg>
     stash
   </a>
   <div class="navlinks">
     <a href="#how" class="on">How it works</a>
     <a href="#why">Why stash</a>
     <a href="#install">Install</a>
-    <a href="flowchart.html">Internals <span class="new">audit</span></a>
   </div>
   <span style="display:flex;align-items:center">
     <button class="nav-cta" onclick="location.href='#install'">Get stash</button>
@@ -435,7 +436,7 @@
     <div class="card"><div class="ic">📦</div><h3>Your data survives</h3>
       <p><code>./uninstall.sh</code> removes two symlinks. Profiles, selections, and state stay yours.</p></div>
     <div class="card"><div class="ic">🔍</div><h3>Auditable</h3>
-      <p>Every code path is charted, including open findings, in <a href="flowchart.html" style="text-decoration:underline">the audit flowcharts</a>. No magic.</p></div>
+      <p>Every code path is charted, including open findings, in the source itself. No magic.</p></div>
   </div>
 </section>
 
@@ -486,7 +487,6 @@ skills-profile pick</pre>
   <div class="cols">
     <div><div class="fh">Project</div>
       <a href="#how">How it works</a>
-      <a href="flowchart.html">Audit flowcharts</a>
       <a href="https://github.com/grooverLab/stash">GitHub</a></div>
     <div><div class="fh">Docs</div>
       <a href="#install">Install</a>

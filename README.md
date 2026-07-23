@@ -14,6 +14,9 @@ scope them per project, and keep every loaded skill's description intact.
 ![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)
 ![Skills organized](https://img.shields.io/badge/skills_organized-590-ff385c)
 
+**[grooverlab.github.io/stash](https://grooverlab.github.io/stash/)** - the
+interactive walkthrough: the big loop, drill-down flowcharts, light + dark.
+
 ```
 skills-profile  ~/my-trading-project   [space] toggle  [l/h] open/close  [enter] apply
 
@@ -149,13 +152,6 @@ conversation with the fresh selection.
 `.claude/skills-profile.json` is committable; links point into your home dir,
 so teammates run `skills-profile use` themselves. Keep `.claude/skills/` in
 `.gitignore`.
-
-## Docs
-
-- **[Interactive overview](https://grooverlab.github.io/stash/)** - the big
-  loop with in-place drill-down flowcharts, light + dark
-- **[Audit flowcharts](https://grooverlab.github.io/stash/flowchart.html)** -
-  every code path charted, zoom + pan, findings history
 
 ## Uninstall
 
