@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stash internals - logic flowcharts (audit)</title>
+<style>
+  :root {
+    color-scheme: light;
+    --primary:#ff385c; --primary-active:#e00b41;
+    --ink:#222222; --body:#3f3f3f; --muted:#6a6a6a; --muted-soft:#929292;
+    --hairline:#dddddd; --hairline-soft:#ebebeb; --border-strong:#c1c1c1;
+    --canvas:#ffffff; --soft:#f7f7f7; --strong:#f2f2f2;
+    --ok:#0f7b3f; --warn:#b25f00;
+    --shadow:rgba(0,0,0,0.02) 0 0 0 1px, rgba(0,0,0,0.04) 0 2px 6px, rgba(0,0,0,0.1) 0 4px 8px;
+    --font:'Airbnb Cereal VF', Circular, Inter, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+    --mono:ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --ink:#f2f0f1; --body:#c9c7c8; --muted:#9a9899; --muted-soft:#6f6d6e;
+    --hairline:#343233; --hairline-soft:#2a2829; --border-strong:#4a4849;
+    --canvas:#161414; --soft:#1f1d1e; --strong:#282627;
+    --ok:#4fc37f; --warn:#e8a04c;
+    --shadow:rgba(0,0,0,0.4) 0 0 0 1px, rgba(0,0,0,0.5) 0 2px 6px, rgba(0,0,0,0.6) 0 4px 8px;
+  }
+  * { box-sizing:border-box; margin:0; }
+  html { scroll-behavior:smooth; }
+  body { font:16px/1.5 var(--font); background:var(--canvas); color:var(--ink); }
+  a { color:inherit; }
+  .wrap { max-width:1128px; margin:0 auto; padding:0 24px; }
+
+  nav { height:80px; border-bottom:1px solid var(--hairline-soft); display:flex; align-items:center;
+        position:sticky; top:0; background:var(--canvas); z-index:20; }
+  nav .wrap { display:flex; align-items:center; justify-content:space-between; width:100%; }
+  .wordmark { color:var(--primary); font-weight:700; font-size:22px; letter-spacing:-.44px;
+              display:flex; align-items:center; gap:8px; text-decoration:none; }
+  .wordmark svg { width:28px; height:28px; }
+  .wordmark small { color:var(--muted); font-size:14px; font-weight:500; }
+  .navlinks { display:flex; align-items:center; gap:24px; font-size:16px; font-weight:600; }
+  .navlinks a { color:var(--muted); text-decoration:none; }
+  .navlinks a:hover { color:var(--ink); }
+  .theme-btn { width:40px; height:40px; border-radius:9999px; border:1px solid var(--hairline);
+               background:var(--canvas); color:var(--ink); cursor:pointer; font-size:16px; }
+  .theme-btn:hover { background:var(--soft); }
+
+  header { padding:48px 0 8px; }
+  h1 { font-size:28px; font-weight:700; line-height:1.43; }
+  .note { color:var(--muted); font-size:14px; max-width:70ch; margin-top:8px; }
+  .note a { color:var(--primary); text-decoration:none; }
+  .note a:hover { text-decoration:underline; }
+  .hint { color:var(--muted-soft); font-size:13px; margin-top:12px; }
+
+  h2 { font-size:21px; font-weight:700; line-height:1.43; margin:48px 0 4px; }
+  .lede { color:var(--muted); font-size:14px; margin-bottom:16px; }
+
+  .diagram { position:relative; background:var(--soft); border:1px solid var(--hairline);
+             border-radius:20px; margin:16px 0; overflow:hidden; height:min(72vh, 640px);
+             cursor:grab; touch-action:pan-y pinch-zoom; }  /* pan-y keeps phone page-scroll alive */
+  .diagram.grabbing { cursor:grabbing; }
+  .pz-inner { transform-origin:0 0; width:max-content; padding:24px; }
+  .diagram svg { max-width:none !important; height:auto; display:block; }
+  .pz-bar { position:absolute; top:12px; right:12px; display:flex; gap:6px; z-index:5; }
+  .pz-bar button { background:var(--canvas); color:var(--ink); border:1px solid var(--hairline);
+                   border-radius:9999px; min-width:32px; height:32px; padding:0 12px;
+                   cursor:pointer; font:14px var(--font); box-shadow:var(--shadow); }
+  .pz-bar button:hover { background:var(--strong); }
+
+  table { border-collapse:collapse; width:100%; margin:16px 0 64px; font-size:14px; display:block; overflow-x:auto; }
+  th, td { border:1px solid var(--hairline); padding:10px 14px; text-align:left; vertical-align:top; min-width:9rem; }
+  th { background:var(--soft); font-weight:600; }
+  td b { color:var(--ink); }
+  td { color:var(--body); }
+  .ok { color:var(--ok); font-weight:600; } .warn { color:var(--warn); font-weight:600; }
+  .pill { display:inline-block; border-radius:9999px; padding:2px 10px; font-size:12px; font-weight:600; }
+  .pill.ok { background:color-mix(in srgb, var(--ok) 12%, transparent); }
+  .pill.warn { background:color-mix(in srgb, var(--warn) 12%, transparent); }
+  code { font:.85em var(--mono); background:var(--strong); border-radius:4px; padding:1px 5px; }
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a class="wordmark" href="index.html">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="#ff385c" stroke-width="2.6" stroke-linecap="round"/></svg>
+    stash <small>/ internals</small>
+  </a>
+  <div class="navlinks">
+    <a href="index.html">Overview</a>
+    <a href="https://github.com/grooverLab/stash">GitHub</a>
+    <button class="theme-btn" id="themeBtn" title="toggle dark mode">◐</button>
+  </div>
+</div></nav>
+
+<header class="wrap">
+  <h1>Implemented logic, as flowcharts</h1>
+  <p class="note">Hand-derived from the actual code in <code>bin/skills-profile</code> (bash) and
+  <code>bin/skills-profile-tui</code> (zsh). One diagram per code path - this page is the audit view.
+  For the concept-first walkthrough, see <a href="index.html">the overview</a>.</p>
+  <p class="hint">Each chart: scroll-wheel zooms (cursor-centered), drag pans, double-click or reset fits.</p>
+</header>
+
+<div class="wrap">
+
+<h2>0 · Data model</h2>
+<p class="lede">Where a skill loads from.</p>
+<div class="diagram"><pre class="mermaid">
+flowchart LR
+  W[("~/.claude/skill-profiles/&lt;domain&gt;/<br>WAREHOUSE - loads nowhere")]
+  G[("~/.claude/skills/<br>GLOBAL - every session")]
+  P[("&lt;project&gt;/.claude/skills/<br>PROJECT - sessions started there")]
+  S[claude session skill list<br>read ONCE at session start]
+  W -- "pickers / use symlink" --> P
+  G --> S
+  P --> S
+  W -. never directly .-> S
+</pre></div>
+
+<h2>1 · CLI dispatch</h2>
+<p class="lede"><code>skills-profile &lt;cmd&gt;</code> - all eight subcommands, plus the hidden
+<code>_apply</code> the TUI pipes its selection to.</p>
+<div class="diagram"><pre class="mermaid">
+flowchart TD
+  A([start]) --> B[/"cmd = $1, default: list"/]
+  B --> C{cmd?}
+  C -- migrate --> M1
+  C -- use --> U1
+  C -- off --> O1
+  C -- list --> L1["for each profile dir:<br>print name + count"] --> Z([exit])
+  C -- status --> S1{project skills dir?}
+  S1 -- yes --> S2["write_state - recompute<br>from the links"] --> S2b[/"cat .claude/skills-profile.json"/] --> Z
+  S1 -- no --> S3["print: no profiles active"] --> Z
+  C -- pick --> P1["exec skills-profile-tui<br>(diagram 2)"]
+  C -- pick-html --> H1["(diagram 3)"]
+  C -- update --> V1["for each git repo in ~/.claude/vendor:<br>git pull --ff-only - one failure<br>does not abort the loop"] --> Z
+  C -- _apply --> AH["selection from stdin -><br>apply_selection (diagram 4)"] --> Z
+  C -- other --> E1["print usage; exit 1"]
+
+  subgraph MIGRATE [migrate - one-shot re-org of global dir]
+    M1["for each entry in ~/.claude/skills"] --> M2{is symlink?}
+    M2 -- no --> M3["kept-global += 1"] --> M1
+    M2 -- yes --> M4["route via profile_for:<br>1. HR name list<br>2. DB name list<br>3. target-path patterns"]
+    M4 --> M5{profile found?}
+    M5 -- no --> M3
+    M5 -- yes --> M6{--dry-run?}
+    M6 -- yes --> M7["print name -> profile"] --> M1
+    M6 -- no --> M8[/"mv link into<br>skill-profiles/&lt;prof&gt;/"/] --> M1
+  end
+  M1 --> M9["print moved / kept counts"] --> Z
+
+  subgraph USE [use &lt;profiles...&gt;]
+    U1["for each named profile"] --> U2{profile dir exists?}
+    U2 -- no --> U3["error, exit 1"]
+    U2 -- yes --> U4["for each skill in profile"] --> U5{"name already in<br>project skills?"}
+    U5 -- yes --> U4
+    U5 -- no --> U6[/"ln -s real-target -> project"/] --> U4
+    U4 --> U7[["write_state:<br>recompute active + partial<br>FROM THE LINKS on disk"]]
+  end
+  U7 --> Z
+
+  subgraph OFF [off &lt;profiles...&gt;]
+    O1["for each skill of profile"] --> O2{"project entry<br>is a symlink?"}
+    O2 -- yes --> O3[/"rm link"/] --> O1
+    O2 -- no --> O1
+    O1 --> O4[["write_state:<br>recompute active + partial<br>FROM THE LINKS on disk"]]
+  end
+  O4 --> Z
+
+  style U7 fill:#23863633,stroke:#238636
+  style O4 fill:#23863633,stroke:#238636
+</pre></div>
+
+<h2>2 · Terminal picker</h2>
+<p class="lede"><code>skills-profile pick</code> - the zsh TUI.</p>
+<div class="diagram"><pre class="mermaid">
+flowchart TD
+  A([start]) --> G1{stdin is a tty?}
+  G1 -- no --> G2["error: needs a terminal"] --> X([exit 1])
+  G1 -- yes --> G3{"PWD = HOME<br>or project skills dir<br>resolves to global dir?"}
+  G3 -- yes --> G4["error: cd into a project"] --> X
+  G3 -- no --> I1["mkdir project skills dir"]
+  I1 --> I2["init: for every profile/skill<br>link exists in project? -> sel[p/s]=1"]
+  I2 --> I3["enter alt screen - tput smcup<br>trap restores on exit"]
+  I3 --> D1["draw viewport:<br>profile rows: + / - and x / ~ / blank<br>expanded: per-skill rows"]
+  D1 --> K1[/"read one key<br>arrows normalize to j k l h"/]
+  K1 --> K2{key?}
+  K2 -- "j / k" --> K3["move cursor"] --> D1
+  K2 -- l --> K4["expand profile -> rebuild rows"] --> D1
+  K2 -- h --> K5["collapse - from child row:<br>jump cursor to parent"] --> D1
+  K2 -- space --> K6{"row type?"}
+  K6 -- profile --> K7{"prof_state = all?"}
+  K7 -- yes --> K8["deselect every skill in profile"] --> D1
+  K7 -- no --> K9["select every skill in profile"] --> D1
+  K6 -- skill --> K10["toggle sel[p/s]"] --> D1
+  K2 -- a --> K11["select ALL profiles' skills"] --> D1
+  K2 -- n --> K12["clear selection"] --> D1
+  K2 -- q --> Q([exit 0 - nothing changed])
+  K2 -- enter --> AP1["leave alt screen"]
+  AP1 --> AP2["pipe selection lines to<br>skills-profile _apply - diagram 4"]
+  AP2 --> AP3[/"state json recomputed<br>from the links by the engine"/]
+  AP3 --> AP4{"CLAUDECODE env set?<br>(already inside a session)"}
+  AP4 -- yes --> AP5["print: restart session to load"] --> Z([exit 0])
+  AP4 -- no --> AP6[["exec claude $SP_CLAUDE_FLAGS<br>default: --dangerously-skip-permissions"]]
+  style AP6 fill:#23863633,stroke:#238636
+</pre></div>
+
+<h2>3 · Browser picker</h2>
+<p class="lede"><code>skills-profile pick-html</code> - bash + one-shot nc.</p>
+<div class="diagram"><pre class="mermaid">
+flowchart TD
+  A([start]) --> G1{"PWD = HOME<br>or project skills dir<br>resolves to global dir?"}
+  G1 -- yes --> G2["error: cd into a project"] --> X([exit 1])
+  G1 -- no --> B1["random port 20000-59999<br>mktemp html + request file<br>mkfifo response pipe"]
+  B1 --> B2[/"generate HTML:<br>details block per profile<br>master checkbox toggles group - JS<br>per-skill checkbox, pre-checked if linked<br>form POSTs to 127.0.0.1:port"/]
+  B2 --> B3["exec 3&lt;&gt;fifo<br>holds pipe open so nc can start"]
+  B3 --> B4["nc -l port &lt;&amp;3 &gt; request file &amp;"]
+  B4 --> B5[/"open html in browser<br>skipped if SP_NO_OPEN"/]
+  B5 --> W1{"request file<br>contains done=1?"}
+  W1 -- no --> W2["sleep 0.2"] --> W1
+  W1 -- yes --> R1["write HTTP 200 response into fifo<br>close fd3 -> nc flushes + exits"]
+  R1 --> P1["parse POST body:<br>strip CR, take line after blank line,<br>split on &amp;, keep p= params,<br>decode %2F -> /"]
+  P1 --> P2["APPLY - diagram 4"]
+  P2 --> P3[/"write_state: recompute<br>active + partial from the links"/]
+  P3 --> P4["cleanup temp files"]
+  P4 --> P5{CLAUDECODE set?}
+  P5 -- yes --> P6["print: restart session"] --> Z([exit])
+  P5 -- no --> P7[["exec claude $SP_CLAUDE_FLAGS<br>default: --dangerously-skip-permissions"]]
+  style P7 fill:#23863633,stroke:#238636
+</pre></div>
+
+<h2>4 · Shared APPLY diff</h2>
+<p class="lede">All pickers converge here - one function, <code>apply_selection()</code> in
+<code>bin/skills-profile</code>.</p>
+<div class="diagram"><pre class="mermaid">
+flowchart TD
+  A["for EVERY profile / skill pair<br>in the warehouse"] --> B{"pair in<br>selection?"}
+  B -- yes --> C{"name already exists<br>in project skills?"}
+  C -- yes --> A
+  C -- no --> D[/"resolve one symlink hop<br>ln -s real-target -> project<br>linked += 1"/] --> A
+  B -- no --> E{"project entry exists<br>AND is a symlink?"}
+  E -- no --> A
+  E -- yes --> F[/"rm link<br>removed += 1"/] --> A
+  A --> G["print linked +N removed -N"]
+  H["invariants:<br>1. real files/dirs never deleted - only symlinks<br>2. existing names never overwritten - first wins<br>3. removal only touches names known to the warehouse"]
+  G --- H
+</pre></div>
+
+<h2>5 · Audit findings</h2>
+<p class="lede">All resolved 2026-07-23 - kept for history.</p>
+<table>
+  <tr><th>#</th><th>Severity</th><th>Finding</th><th>Resolution</th><th>Status</th></tr>
+  <tr>
+    <td>1</td><td class="warn">HIGH</td>
+    <td><b>python3 remnant.</b> <code>use</code> and <code>off</code> recorded state via python3 heredocs
+        while the pickers were shell-only.</td>
+    <td>Both heredocs replaced by the shared <code>write_state()</code> printf writer. Zero python anywhere.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>2</td><td class="warn">HIGH</td>
+    <td><b>State schema divergence.</b> <code>use</code>/<code>off</code> wrote <code>{active}</code> only and
+        merged names; pickers rebuilt <code>{active, partial}</code> - an <code>off</code> after a picker run
+        silently dropped partial data.</td>
+    <td>One writer everywhere: <code>write_state()</code> recomputes <code>{active, partial}</code> FROM THE
+        LINKS on disk. Links are the truth; json is a cache. Verified by round-trip test incl. manual link removal.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>3</td><td class="warn">MED</td>
+    <td><b>Guard asymmetry.</b> pick-html only checked PWD=HOME; TUI also checked the resolved path.</td>
+    <td>pick-html now carries the same two-condition guard as the TUI.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>4</td><td class="warn">MED</td>
+    <td><b>Stale self-documentation.</b> Header said "pick = HTML picker"; usage omitted pick-html.</td>
+    <td>Header rewritten (pick = TUI, pick-html = browser); usage line lists both.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>5</td><td>LOW</td>
+    <td><b>Unanchored profile count</b> in pick-html's state writer (<code>grep -cF "prof/"</code>).</td>
+    <td>Block deleted entirely - superseded by <code>write_state()</code>, which counts links with
+        <code>[ -e ]</code> checks, no grep.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>6</td><td>LOW</td>
+    <td><b>Hardcoded migrate routing.</b> <code>profile_for()</code> encodes the author's vendor paths.</td>
+    <td>Kept by design; README documents editing <code>profile_for()</code> for your own layout.</td>
+    <td><span class="pill warn">BY DESIGN</span></td>
+  </tr>
+  <tr>
+    <td>7</td><td class="warn">HIGH</td>
+    <td><b>Unbound-variable crash.</b> <code>set -u</code> + bare <code>$SP_NO_OPEN</code> /
+        <code>$CLAUDECODE</code>: pick-html died in a default environment before opening the browser,
+        or after applying but before launching claude.</td>
+    <td><code>${VAR:-}</code> expansion at both sites. Reproduced, then verified end-to-end with a real
+        form POST.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>8</td><td class="warn">HIGH</td>
+    <td><b>Empty profile corrupted the project dir.</b> An empty profile directory left the literal
+        glob unexpanded - <code>use</code> created a symlink named <code>*</code> in
+        <code>.claude/skills/</code>.</td>
+    <td><code>shopt -s nullglob</code>; empty profiles now link 0 skills. Reproduced before, clean after.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>9</td><td class="warn">MED</td>
+    <td><b>Diff engine triplicated.</b> The same add/remove logic lived in <code>use</code>/<code>off</code>,
+        the TUI's <code>apply()</code>, and pick-html's inline loop - three places to drift.</td>
+    <td>One <code>apply_selection()</code> + hidden <code>_apply</code> subcommand; the TUI pipes its
+        selection, pick-html calls the function. TUI shrank ~25 lines.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>10</td><td class="warn">MED</td>
+    <td><b>update aborted on first failure.</b> <code>pipefail</code> made one diverged vendor repo
+        kill the whole pull loop.</td>
+    <td><code>|| true</code> on the capture; the failure line still prints per repo.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>11</td><td class="warn">MED</td>
+    <td><b>status served a stale cache</b>, contradicting "the links are the truth".</td>
+    <td><code>status</code> now recomputes via <code>write_state</code> before printing.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+  <tr>
+    <td>12</td><td class="warn">MED</td>
+    <td><b>use/off/status unguarded from <code>$HOME</code></b> - running them there silently edited
+        the GLOBAL skills dir, despite the README's guard-rails claim.</td>
+    <td>Shared <code>require_project()</code> now guards every project-level command; pickers included.</td>
+    <td><span class="pill ok">FIXED</span></td>
+  </tr>
+</table>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="pz.js?v=3"></script>
+<script>
+  // stash the diagram sources so we can re-render on theme change
+  var sources = [];
+  document.querySelectorAll('pre.mermaid').forEach(function (p) { sources.push(p.textContent); });
+
+  function isDark() { return document.documentElement.dataset.theme === 'dark'; }
+
+  function renderAll() {
+    // reset containers back to raw sources
+    document.querySelectorAll('.diagram').forEach(function (box, i) {
+      delete box.dataset.pz;
+      box.innerHTML = '<pre class="mermaid"></pre>';
+      box.querySelector('pre').textContent = sources[i];
+    });
+    mermaid.initialize({ startOnLoad: false, theme: isDark() ? 'dark' : 'neutral',
+                         flowchart: { curve: 'linear' } });
+    mermaid.run({ querySelector: 'pre.mermaid' }).then(attachPanZoom);
+  }
+
+  // theme: localStorage > system preference; toggle persists + re-renders diagrams
+  (function () {
+    var saved = localStorage.getItem('stash-theme');
+    var dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.dataset.theme = 'dark';
+    document.getElementById('themeBtn').onclick = function () {
+      var d = isDark();
+      if (d) delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = 'dark';
+      localStorage.setItem('stash-theme', d ? 'light' : 'dark');
+      renderAll();
+    };
+  })();
+
+  renderAll();
+</script>
+</body>
+</html>

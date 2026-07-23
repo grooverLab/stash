@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stash - Claude Code skills per project, no context bloat</title>
+<meta name="description" content="Per-project skill manager for Claude Code. Load only the skills each session needs - domain profiles, TUI and browser pickers, zero dependencies, pure bash.">
+<meta name="keywords" content="claude code skills, manage claude skills, claude skills manager, claude code context bloat, claude code skills per project, organize claude skills, claude skill profiles, claude code disable skills">
+<link rel="canonical" href="https://grooverlab.github.io/stash/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://grooverlab.github.io/stash/">
+<meta property="og:title" content="stash - manage Claude Code skills per project">
+<meta property="og:description" content="Stop wasting context on skills your session never uses. Domain profiles + per-project loading for Claude Code. Pure shell, zero dependencies.">
+<meta property="og:image" content="https://grooverlab.github.io/stash/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="stash - manage Claude Code skills per project">
+<meta name="twitter:description" content="Stop wasting context on skills your session never uses. Domain profiles + per-project loading for Claude Code.">
+<meta name="twitter:image" content="https://grooverlab.github.io/stash/og.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "stash",
+  "operatingSystem": "macOS, Linux",
+  "applicationCategory": "DeveloperApplication",
+  "description": "Per-project skill manager for Claude Code. Organizes skills into domain profiles and loads only what each session needs.",
+  "url": "https://grooverlab.github.io/stash/",
+  "license": "https://opensource.org/licenses/MIT",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "softwareRequirements": "bash, zsh",
+  "author": { "@type": "Organization", "name": "grooverLab", "url": "https://github.com/grooverLab" },
+  "publisher": { "@type": "Organization", "name": "grooverLab", "url": "https://github.com/grooverLab" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "How do I stop Claude Code loading all my skills?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Move them out of the global ~/.claude/skills directory into stash profiles, then select per project with skills-profile pick. Only the global dir and the project's .claude/skills load into a session." } },
+    { "@type": "Question", "name": "Can I disable Claude Code skills for just one project?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Selection lives in the project's .claude/skills as symlinks; uncheck a profile or a single skill and it stops loading there, while other projects keep it." } },
+    { "@type": "Question", "name": "Why do some skills show name-only with no description?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Claude Code caps the skill listing at a token budget of roughly 1% of context. Past it, descriptions are truncated, and name-only skills barely auto-trigger. A leaner per-project list keeps every loaded skill fully described." } },
+    { "@type": "Question", "name": "Does stash work with plugin skills?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Plugins are managed by Claude Code's own plugin system and keep auto-updating; stash manages directory skills. The two compose without conflict." } },
+    { "@type": "Question", "name": "Do I need to restart Claude Code after changing skills?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes, the skill list is read once at session start. claude -c resumes the same conversation with the fresh selection." } }
+  ]
+}
+</script>
+<style>
+  :root {
+    color-scheme: light;
+    --primary:#ff385c; --primary-active:#e00b41; --primary-soft:#ffd1da;
+    --ink:#222222; --body:#3f3f3f; --muted:#6a6a6a; --muted-soft:#929292;
+    --hairline:#dddddd; --hairline-soft:#ebebeb; --border-strong:#c1c1c1;
+    --canvas:#ffffff; --soft:#f7f7f7; --strong:#f2f2f2;
+    --code-bg:#222222; --code-fg:#ffffff;
+    --shadow:rgba(0,0,0,0.02) 0 0 0 1px, rgba(0,0,0,0.04) 0 2px 6px, rgba(0,0,0,0.1) 0 4px 8px;
+    --font:'Airbnb Cereal VF', Circular, Inter, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+    --mono:ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --ink:#f2f0f1; --body:#c9c7c8; --muted:#9a9899; --muted-soft:#6f6d6e;
+    --hairline:#343233; --hairline-soft:#2a2829; --border-strong:#4a4849;
+    --canvas:#161414; --soft:#1f1d1e; --strong:#282627;
+    --code-bg:#0f0d0e; --code-fg:#f2f0f1;
+    --shadow:rgba(0,0,0,0.4) 0 0 0 1px, rgba(0,0,0,0.5) 0 2px 6px, rgba(0,0,0,0.6) 0 4px 8px;
+  }
+  * { box-sizing:border-box; margin:0; }
+  html { scroll-behavior:smooth; }
+  body { font:16px/1.5 var(--font); background:var(--canvas); color:var(--ink); overflow-x:hidden; }
+  a { color:inherit; text-decoration:none; }
+  .wrap { max-width:1128px; margin:0 auto; padding:0 24px; }
+
+  /* ---------- top nav ---------- */
+  nav { height:80px; border-bottom:1px solid var(--hairline-soft); display:flex; align-items:center;
+        position:sticky; top:0; background:var(--canvas); z-index:20; }
+  nav .wrap { display:flex; align-items:center; justify-content:space-between; width:100%; }
+  .wordmark { color:var(--primary); font-weight:700; font-size:22px; letter-spacing:-.44px; display:flex; align-items:center; gap:8px; }
+  .wordmark svg { width:28px; height:28px; }
+  .navlinks { display:flex; gap:24px; font-size:16px; font-weight:600; line-height:1.25; }
+  .navlinks a { color:var(--muted); padding-bottom:6px; border-bottom:2px solid transparent; }
+  .navlinks a:hover, .navlinks a.on { color:var(--ink); border-bottom-color:var(--ink); }
+  .navlinks .new { font-size:8px; font-weight:700; letter-spacing:.32px; text-transform:uppercase;
+                   border:1px solid var(--hairline); border-radius:9999px; padding:2px 6px;
+                   vertical-align:middle; margin-left:4px; color:var(--ink); }
+  .nav-cta { background:var(--primary); color:#fff; border:none; font:inherit; font-size:14px; font-weight:500;
+             border-radius:9999px; padding:10px 20px; cursor:pointer; }
+  .nav-cta:hover { background:var(--primary-active); }
+
+  /* ---------- hero ---------- */
+  header { padding:64px 0 48px; text-align:center; }
+  h1 { font-size:28px; font-weight:700; line-height:1.43; letter-spacing:0; }
+  h1 em { font-style:normal; color:var(--primary); }
+  .sub { color:var(--muted); font-size:16px; font-weight:400; max-width:58ch; margin:12px auto 0; }
+  /* pill "search bar" = the install command */
+  .pill { margin:32px auto 0; max-width:860px; display:flex; align-items:center; gap:0;
+          background:var(--canvas); border:1px solid var(--hairline); border-radius:9999px;
+          box-shadow:var(--shadow); padding:8px 8px 8px 24px; height:64px; }
+  .pill .seg { flex:1; text-align:left; overflow:hidden; }
+  .pill .seg label { display:block; font-size:12px; font-weight:700; line-height:1.33; }
+  .pill .seg code { font:13px var(--mono); color:var(--muted); white-space:nowrap;
+                    display:block; overflow:hidden; text-overflow:ellipsis; }
+  .pill .orb { width:48px; height:48px; border-radius:9999px; background:var(--primary); color:#fff;
+               border:none; cursor:pointer; display:grid; place-items:center; flex:none; font-size:18px; }
+  .pill .orb:hover { background:var(--primary-active); }
+  .herostats { display:flex; gap:48px; justify-content:center; margin-top:48px; flex-wrap:wrap; }
+  .hs b { display:block; font-size:34px; font-weight:700; letter-spacing:-1px; line-height:1.1; }
+  .hs span { color:var(--muted); font-size:14px; }
+
+  /* load reveal */
+  .rise { opacity:0; transform:translateY(12px); animation:rise .55s ease forwards; }
+  @keyframes rise { to { opacity:1; transform:none; } }
+  .d1{animation-delay:.05s}.d2{animation-delay:.15s}.d3{animation-delay:.28s}.d4{animation-delay:.42s}
+
+  /* scroll reveal */
+  .sr { opacity:0; transform:translateY(16px); transition:opacity .5s ease, transform .5s ease; }
+  .sr.in { opacity:1; transform:none; }
+
+  /* separator drawn INSIDE the section so it can never bleed past the content
+     column; symmetric 64px air above and below the line.
+     NOTE: .wrap (class, 0-1-0) overrides bare element rules (0-0-1) - these
+     MUST be compound section.wrap / header.wrap selectors to win. */
+  header.wrap { padding:64px 24px 48px; }
+  section.wrap { margin:64px auto 0; padding:0 24px 16px; }
+  section.wrap::before { content:""; display:block; height:1px; background:var(--hairline-soft);
+                    margin-bottom:64px; }
+  h2 { font-size:21px; font-weight:700; line-height:1.43; margin-bottom:4px; text-align:center; }
+  .seclede { color:var(--muted); font-size:14px; margin-bottom:32px; text-align:center;
+             max-width:62ch; margin-left:auto; margin-right:auto; }
+
+  /* ---------- flow chart ---------- */
+  .flow { display:flex; flex-direction:column; align-items:center; }
+  .node { background:var(--canvas); border:1px solid var(--hairline); border-radius:14px;
+          padding:12px 20px; text-align:center; max-width:460px; width:fit-content;
+          font-size:14px; line-height:1.43; color:var(--body); }
+  .node b { color:var(--ink); }
+  .node small { color:var(--muted); display:block; font-size:13px; }
+  .start { border-radius:9999px; background:var(--soft); border-color:var(--hairline); color:var(--ink); font-weight:500; }
+  .dec { background:var(--soft); border-color:var(--hairline); border-radius:9999px; font-weight:500; color:var(--ink); }
+  .edge { display:flex; flex-direction:column; align-items:center; color:var(--muted-soft); font-size:12px; }
+  .edge::before { content:""; width:1px; height:18px; background:var(--border-strong); }
+  .edge::after { content:""; border:5px solid transparent; border-top-color:var(--border-strong); margin-top:-1px; }
+
+  .drill { cursor:pointer; border:1.5px solid var(--primary); transition:max-width .28s ease, box-shadow .2s; }
+  .drill > .title { font-weight:600; color:var(--ink); }
+  .drill > .title .plus { display:inline-grid; place-items:center; width:20px; height:20px; margin-left:8px;
+        border-radius:9999px; background:var(--primary); color:#fff; font-size:13px; font-weight:700; vertical-align:-4px; }
+  .drill:hover { box-shadow:var(--shadow); transform:translateY(-1px); }
+  .drill .inner { display:none; }
+  .drill.open { max-width:920px; width:100%; cursor:default; box-shadow:var(--shadow); border-color:var(--hairline); }
+  .drill.open > .title { text-align:left; border-bottom:1px solid var(--hairline-soft); padding-bottom:12px; margin-bottom:16px; }
+  .drill.open > .title .plus { transform:rotate(45deg); background:var(--strong); color:var(--ink); }
+  .drill.open > .title .hint { float:right; color:var(--muted-soft); font-size:12px; font-weight:400; }
+  .drill.open .inner { display:block; animation:fade .22s ease; }
+  @keyframes fade { from { opacity:0; transform:translateY(-4px);} to { opacity:1; } }
+
+  .mini { display:flex; flex-direction:column; align-items:center; }
+  .mnode { background:var(--canvas); border:1px solid var(--hairline); border-radius:8px;
+           padding:8px 14px; font-size:13px; line-height:1.43; text-align:center; max-width:400px; color:var(--body); }
+  .mio { background:var(--soft); }
+  .mdec { border-radius:9999px; background:var(--soft); font-weight:500; color:var(--ink); }
+  .mnote { color:var(--muted); font-size:13px; max-width:480px; text-align:center; margin-top:10px; }
+  .medge { display:flex; flex-direction:column; align-items:center; color:var(--muted-soft); font-size:11px; }
+  .medge::before { content:""; width:1px; height:14px; background:var(--border-strong); }
+  .medge::after { content:""; border:4px solid transparent; border-top-color:var(--border-strong); margin-top:-1px; }
+  .mrow { display:flex; gap:20px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
+  .mcol { display:flex; flex-direction:column; align-items:center; }
+  .mcol > .blbl { font-size:11px; font-weight:600; margin-bottom:4px; color:var(--primary); }
+
+  .loop { border:1px solid var(--hairline); border-radius:20px; padding:24px 16px 24px 48px;
+          position:relative; width:100%; max-width:680px; background:var(--canvas); }
+  .loop > .llbl { position:absolute; top:-10px; left:20px; background:var(--canvas);
+                  padding:0 8px; color:var(--muted); font-size:12px; font-weight:700; }
+  .loopback { position:absolute; left:14px; top:56px; bottom:60px; width:22px;
+              border-left:1.5px solid var(--primary); border-top:1.5px solid var(--primary);
+              border-bottom:1.5px solid var(--primary); border-radius:10px 0 0 10px; opacity:.7; }
+  .loopback::before { content:""; position:absolute; right:-1px; top:-5px;
+              border:5px solid transparent; border-left-color:var(--primary); }
+  .loopback::after { content:"yes - pick again"; position:absolute; left:-15px; top:45%;
+              transform:rotate(180deg); writing-mode:vertical-rl; color:var(--primary); font-size:11px; white-space:nowrap; }
+
+  /* ---------- feature cards ---------- */
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:16px; }
+  .card { background:var(--canvas); border:1px solid var(--hairline); border-radius:14px; padding:24px;
+          transition:box-shadow .2s, transform .2s; }
+  .card:hover { box-shadow:var(--shadow); transform:translateY(-2px); }
+  .card .ic { width:32px; height:32px; border-radius:9999px; background:var(--soft); display:grid;
+              place-items:center; margin-bottom:12px; font-size:15px; }
+  .card h3 { font-size:16px; font-weight:600; line-height:1.25; margin-bottom:6px; }
+  .card p { color:var(--muted); font-size:14px; line-height:1.43; }
+  .card code { font:12.5px var(--mono); background:var(--soft); border-radius:4px; padding:1px 5px; }
+
+  /* ---------- faq ---------- */
+  .faqs { max-width:720px; margin:0 auto; }
+  .faq { border-bottom:1px solid var(--hairline-soft); }
+  .faq summary { padding:16px 8px; font-size:16px; font-weight:600; cursor:pointer; list-style:none;
+                 display:flex; justify-content:space-between; align-items:center; }
+  .faq summary::after { content:"+"; color:var(--primary); font-weight:700; font-size:18px; }
+  .faq[open] summary::after { content:"−"; }
+  .faq summary:hover { color:var(--primary); }
+  .faq p { color:var(--muted); font-size:14px; line-height:1.5; padding:0 8px 16px; max-width:64ch; }
+
+  /* ---------- install ---------- */
+  .install { background:var(--soft); border-radius:20px; padding:32px; }
+  .install pre { font:13.5px/1.9 var(--mono); background:var(--code-bg); color:var(--code-fg); border-radius:14px;
+                 padding:20px 24px; overflow-x:auto; }
+  .install pre .c { color:#929292; } .install pre .p { color:var(--primary-soft); }
+  .copy { float:right; font:12px var(--font); background:transparent; color:var(--code-fg); border:1px solid #555;
+          border-radius:9999px; padding:4px 12px; cursor:pointer; }
+  .copy:hover { border-color:var(--code-fg); }
+  .theme-btn { width:40px; height:40px; border-radius:9999px; border:1px solid var(--hairline);
+               background:var(--canvas); color:var(--ink); cursor:pointer; font-size:16px; margin-left:12px; }
+  .theme-btn:hover { background:var(--soft); }
+
+  footer { margin-top:64px; border-top:1px solid var(--hairline-soft); padding:48px 0; }
+  footer .cols { display:flex; gap:64px; flex-wrap:wrap; font-size:14px; }
+  footer .fh { font-size:16px; font-weight:500; margin-bottom:12px; }
+  footer a { display:block; color:var(--ink); margin:6px 0; }
+  footer a:hover { text-decoration:underline; }
+  .legal { color:var(--muted); font-size:13px; margin-top:32px; }
+
+  @media (max-width:744px) {
+    .navlinks { display:none; }
+    .pill { flex-direction:row; height:56px; }
+    .herostats { gap:28px; }
+    .loop { padding-left:40px; }
+  }
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a class="wordmark" href="#">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="#ff385c" stroke-width="2.6" stroke-linecap="round"/></svg>
+    stash
+  </a>
+  <div class="navlinks">
+    <a href="#how" class="on">How it works</a>
+    <a href="#why">Why stash</a>
+    <a href="#install">Install</a>
+    <a href="flowchart.html">Internals <span class="new">audit</span></a>
+  </div>
+  <span style="display:flex;align-items:center">
+    <button class="nav-cta" onclick="location.href='#install'">Get stash</button>
+    <button class="theme-btn" id="themeBtn" title="toggle dark mode">◐</button>
+  </span>
+</div></nav>
+
+<header class="wrap">
+  <h1 class="rise d1">Stop wasting context on 590 skills<br><em>your session never uses.</em></h1>
+  <p class="sub rise d2">stash loads only the Claude Code skills your project needs. Without it,
+  every session loads every installed skill - and past the description budget they show up
+  name-only and barely trigger. Domain profiles, per-project loading: smaller listing, sharper
+  triggering.</p>
+
+  <div class="pill rise d3" role="group" aria-label="install command">
+    <div class="seg"><label>Install</label><code id="inst">git clone https://github.com/grooverLab/stash && cd stash && ./install.sh</code></div>
+    <button class="orb" title="copy install command"
+      onclick="navigator.clipboard.writeText(document.getElementById('inst').textContent).then(()=>{this.textContent='✓'; setTimeout(()=>this.textContent='⌘',1200)})">⌘</button>
+  </div>
+
+  <div class="herostats rise d4">
+    <div class="hs"><b data-count="590">0</b><span>skills organized</span></div>
+    <div class="hs"><b data-count="14">0</b><span>domain profiles</span></div>
+    <div class="hs"><b data-count="0">0</b><span>dependencies</span></div>
+    <div class="hs"><b>100%</b><span>shell</span></div>
+  </div>
+</header>
+
+<section class="wrap" id="how">
+  <div class="sr"><h2>How it works</h2>
+  <p class="seclede">The big loop. Tap any outlined node - it expands right there into its inner flowchart.
+  Click outside to close.</p></div>
+
+  <div class="flow sr" id="master">
+
+    <div class="node start">Problem: every Claude Code session loads ALL your skills</div>
+    <div class="edge"></div>
+
+    <div class="node drill" tabindex="0">
+      <div class="title">1 · Install<span class="plus">+</span><small>./install.sh</small></div>
+      <div class="inner"><div class="mini">
+        <div class="mnode">run <b>./install.sh</b> from the cloned repo</div>
+        <div class="medge"></div>
+        <div class="mnode mio">creates ~/.claude/bin + ~/.claude/skill-profiles</div>
+        <div class="medge"></div>
+        <div class="mnode mio">symlinks skills-profile + skills-profile-tui into ~/.claude/bin</div>
+        <div class="medge"></div>
+        <div class="mnode mdec">~/.claude/bin on PATH?</div>
+        <div class="mrow">
+          <div class="mcol"><div class="blbl">no</div><div class="mnode">prints the export line for ~/.zshrc</div></div>
+          <div class="mcol"><div class="blbl">yes</div><div class="mnode">ready</div></div>
+        </div>
+        <div class="mnote">Symlinks, not copies - a later git pull updates the live commands instantly.
+        ./uninstall.sh removes exactly these two links, nothing else.</div>
+      </div></div>
+    </div>
+    <div class="edge"></div>
+
+    <div class="node drill" tabindex="0">
+      <div class="title">2 · Build the warehouse<span class="plus">+</span><small>skills-profile migrate - once</small></div>
+      <div class="inner"><div class="mini">
+        <div class="mnode">~/.claude/skills is flat: hundreds of skills, all load everywhere</div>
+        <div class="medge"></div>
+        <div class="mnode"><b>skills-profile migrate --dry-run</b> - preview every planned move</div>
+        <div class="medge"></div>
+        <div class="mnode mdec">routing correct?</div>
+        <div class="mrow">
+          <div class="mcol"><div class="blbl">no</div><div class="mnode">edit profile_for() rules, preview again</div></div>
+          <div class="mcol"><div class="blbl">yes</div><div class="mnode"><b>skills-profile migrate</b></div></div>
+        </div>
+        <div class="medge"></div>
+        <div class="mnode mio">each symlink moves into skill-profiles/&lt;domain&gt;/ - real dirs stay global, untouched</div>
+        <div class="medge"></div>
+        <div class="mnode">global = small always-on set · warehouse = domain profiles, loads nowhere by itself</div>
+        <div class="mnote">Or build by hand: mkdir skill-profiles/mydomain and symlink any skill into it.
+        Pickers rescan every run - new profiles appear automatically.</div>
+      </div></div>
+    </div>
+    <div class="edge"></div>
+
+    <div class="loop">
+      <div class="llbl">3 · THE PER-PROJECT LOOP</div>
+      <div class="loopback"></div>
+      <div class="flow">
+
+        <div class="node drill" tabindex="0">
+          <div class="title">3a · Select skills for this project<span class="plus">+</span><small>pick / pick-html / use</small></div>
+          <div class="inner"><div class="mini">
+            <div class="mnode">cd into the project</div>
+            <div class="medge"></div>
+            <div class="mrow">
+              <div class="mcol"><div class="blbl">terminal</div><div class="mnode"><b>pick</b> - zsh TUI tree:<br>toggle a profile or a single skill</div></div>
+              <div class="mcol"><div class="blbl">browser</div><div class="mnode"><b>pick-html</b> - bash renders the page,<br>one-shot nc catches Apply</div></div>
+              <div class="mcol"><div class="blbl">scripted</div><div class="mnode"><b>use trading db</b> · <b>off marketing</b></div></div>
+            </div>
+            <div class="medge"></div>
+            <div class="mnode"><b>the shared diff engine</b></div>
+            <div class="medge"></div>
+            <div class="mnode mdec">for every warehouse skill: selected?</div>
+            <div class="mrow">
+              <div class="mcol"><div class="blbl">yes + missing</div><div class="mnode mio">add symlink</div></div>
+              <div class="mcol"><div class="blbl">no + our link</div><div class="mnode mio">remove link</div></div>
+              <div class="mcol"><div class="blbl">otherwise</div><div class="mnode">leave alone - real files never touched</div></div>
+            </div>
+            <div class="medge"></div>
+            <div class="mnode mio">state cache recomputed from the links themselves</div>
+            <div class="medge"></div>
+            <div class="mnode mdec">already inside a claude session?</div>
+            <div class="mrow">
+              <div class="mcol"><div class="blbl">no</div><div class="mnode">launches claude</div></div>
+              <div class="mcol"><div class="blbl">yes</div><div class="mnode">restart note - claude -c keeps the chat</div></div>
+            </div>
+          </div></div>
+        </div>
+        <div class="edge"></div>
+
+        <div class="node">3b · symlinks land in the project's <b>.claude/skills</b></div>
+        <div class="edge"></div>
+
+        <div class="node drill" tabindex="0">
+          <div class="title">3c · claude launches lean<span class="plus">+</span><small>what actually loads</small></div>
+          <div class="inner"><div class="mini">
+            <div class="mrow">
+              <div class="mcol"><div class="blbl">always</div><div class="mnode mio">global ~/.claude/skills</div></div>
+              <div class="mcol"><div class="blbl">this project only</div><div class="mnode mio">project .claude/skills - your selection</div></div>
+              <div class="mcol"><div class="blbl">never directly</div><div class="mnode">warehouse skill-profiles/</div></div>
+            </div>
+            <div class="medge"></div>
+            <div class="mnode">session skill list - read once at start</div>
+            <div class="medge"></div>
+            <div class="mnode">fewer skills listed = less context spent + sharper skill triggering</div>
+            <div class="mnote">Change selection mid-session? Links change, the session does not -
+            restart; claude -c resumes the same conversation with a fresh scan.</div>
+          </div></div>
+        </div>
+        <div class="edge"></div>
+
+        <div class="node">3d · work happens</div>
+        <div class="edge"></div>
+
+        <div class="node dec">need different skills?</div>
+        <div class="edge">no - keep working</div>
+
+      </div>
+    </div>
+    <div class="edge"></div>
+
+    <div class="node drill" tabindex="0">
+      <div class="title">4 · Update anytime<span class="plus">+</span><small>git pull - links follow</small></div>
+      <div class="inner"><div class="mini">
+        <div class="mrow">
+          <div class="mcol"><div class="blbl">tool updates</div><div class="mnode">git pull in the stash repo -<br>~/.claude/bin links point here, commands update instantly</div></div>
+          <div class="mcol"><div class="blbl">skill updates</div><div class="mnode">git pull inside a vendor repo -<br>warehouse + every project link see new content immediately</div></div>
+        </div>
+        <div class="mnote">Everything is symlinks - there are no copies to go stale.</div>
+      </div></div>
+    </div>
+    <div class="edge"></div>
+
+    <div class="node drill" tabindex="0">
+      <div class="title">5 · Uninstall if ever<span class="plus">+</span><small>./uninstall.sh</small></div>
+      <div class="inner"><div class="mini">
+        <div class="mnode">./uninstall.sh</div>
+        <div class="medge"></div>
+        <div class="mnode mio">removes the two ~/.claude/bin links - only</div>
+        <div class="medge"></div>
+        <div class="mnode">kept: warehouse, project links, state files - your data is never deleted</div>
+      </div></div>
+    </div>
+
+  </div>
+</section>
+
+<section class="wrap" id="why">
+  <div class="sr"><h2>Why stash holds up</h2>
+  <p class="seclede">Small guarantees, kept everywhere.</p></div>
+  <div class="cards sr">
+    <div class="card"><div class="ic">🔗</div><h3>Symlinks, never copies</h3>
+      <p>The warehouse points at the real skill repos. <code>git pull</code> once - every project sees the update. Nothing drifts.</p></div>
+    <div class="card"><div class="ic">🎛️</div><h3>Three pickers, one engine</h3>
+      <p>TUI, browser page, or plain CLI - all converge on the same diff: add checked, remove unchecked, never touch a real file.</p></div>
+    <div class="card"><div class="ic">🎯</div><h3>Every skill keeps its description</h3>
+      <p>Claude Code truncates skill descriptions past its listing budget - name-only skills barely
+      auto-trigger. A lean list keeps every loaded skill fully described.</p></div>
+    <div class="card"><div class="ic">🪶</div><h3>Zero dependencies</h3>
+      <p>bash + zsh + BSD <code>nc</code>. No python, no node, no server. The browser picker is a generated file and a one-shot listener.</p></div>
+    <div class="card"><div class="ic">🛡️</div><h3>Guard rails</h3>
+      <p>Refuses to run from <code>$HOME</code>, never nests claude-in-claude, never overwrites an existing skill, removes only its own links.</p></div>
+    <div class="card"><div class="ic">📦</div><h3>Your data survives</h3>
+      <p><code>./uninstall.sh</code> removes two symlinks. Profiles, selections, and state stay yours.</p></div>
+    <div class="card"><div class="ic">🔍</div><h3>Auditable</h3>
+      <p>Every code path is charted, including open findings, in <a href="flowchart.html" style="text-decoration:underline">the audit flowcharts</a>. No magic.</p></div>
+  </div>
+</section>
+
+<section class="wrap" id="faq">
+  <div class="sr"><h2>FAQ</h2>
+  <p class="seclede">Short answers to the questions people actually search.</p></div>
+  <div class="faqs sr">
+    <details class="faq"><summary>How do I stop Claude Code loading all my skills?</summary>
+      <p>Move them out of the global <code>~/.claude/skills/</code> directory into stash's
+      profiles, then select per project with <code>skills-profile pick</code>. Only the global
+      dir and the project's <code>.claude/skills/</code> load into a session.</p></details>
+    <details class="faq"><summary>Can I disable Claude Code skills for just one project?</summary>
+      <p>Yes - that is the whole point. Selection lives in the project's <code>.claude/skills/</code>
+      as symlinks; uncheck a profile or a single skill and it stops loading there, while other
+      projects keep it.</p></details>
+    <details class="faq"><summary>Why do some of my skills show name-only, with no description?</summary>
+      <p>Claude Code caps the skill listing at a token budget (about 1% of context). Past it,
+      descriptions are truncated to fit - and name-only skills barely auto-trigger. A leaner
+      per-project list keeps every loaded skill fully described.</p></details>
+    <details class="faq"><summary>Does stash work with plugin skills?</summary>
+      <p>Plugins are managed by Claude Code's own plugin system and keep auto-updating; stash
+      manages directory skills. The two compose without conflict.</p></details>
+    <details class="faq"><summary>Do I need to restart Claude Code after changing skills?</summary>
+      <p>Yes - the skill list is read once at session start. <code>claude -c</code> resumes the
+      same conversation with the fresh selection.</p></details>
+  </div>
+</section>
+
+<section class="wrap" id="install">
+  <div class="sr"><h2>Install in 30 seconds</h2>
+  <p class="seclede">macOS out of the box. Linux needs openbsd-netcat for the browser picker.</p></div>
+  <div class="install sr">
+    <pre><button class="copy" onclick="navigator.clipboard.writeText(this.parentNode.innerText.replace('copy','')).then(()=>{this.textContent='copied'; setTimeout(()=>this.textContent='copy',1200)})">copy</button><span class="c"># get it</span>
+git clone https://github.com/grooverLab/stash
+cd stash && ./install.sh
+
+<span class="c"># organize the warehouse (preview first)</span>
+skills-profile migrate --dry-run
+skills-profile migrate
+
+<span class="c"># per project: choose skills, claude launches lean</span>
+cd ~/my-trading-project
+skills-profile pick</pre>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <div class="cols">
+    <div><div class="fh">Project</div>
+      <a href="#how">How it works</a>
+      <a href="flowchart.html">Audit flowcharts</a>
+      <a href="https://github.com/grooverLab/stash">GitHub</a></div>
+    <div><div class="fh">Docs</div>
+      <a href="#install">Install</a>
+      <a href="#why">Guarantees</a></div>
+  </div>
+  <div class="legal">© 2026 · MIT License · pure shell: bash + zsh + nc</div>
+</div></footer>
+
+<script>
+  // theme: localStorage > system preference; toggle persists
+  (function () {
+    var saved = localStorage.getItem('stash-theme');
+    var dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    if (dark) document.documentElement.dataset.theme = 'dark';
+    document.getElementById('themeBtn').onclick = function () {
+      var d = document.documentElement.dataset.theme === 'dark';
+      if (d) delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = 'dark';
+      localStorage.setItem('stash-theme', d ? 'light' : 'dark');
+    };
+  })();
+
+  // count-up stats + scroll reveals
+  // threshold 0: tall targets (the master flow is several viewports high) would
+  // never hit a ratio threshold and stay invisible forever
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      if (e.target.dataset.count !== undefined && !e.target.dataset.done) {
+        e.target.dataset.done = 1;
+        // time-based so background-tab rAF throttling can't freeze it mid-count
+        var n = +e.target.dataset.count, t0 = performance.now(), DUR = 700, el = e.target;
+        if (document.hidden) { el.textContent = n; return; }   // throttled tab: skip straight to final
+        (function tick(now) {
+          var p = Math.min(1, ((now || performance.now()) - t0) / DUR);
+          el.textContent = Math.round(n * p);
+          if (p < 1) requestAnimationFrame(tick);
+        })(t0);
+        setTimeout(function () { el.textContent = n; }, DUR + 100);   // absolute failsafe
+      }
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+    });
+  }, { threshold: 0, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.sr, [data-count]').forEach(function (el) { io.observe(el); });
+  // failsafe: content must never stay invisible if the observer misbehaves
+  setTimeout(function () {
+    document.querySelectorAll('.sr:not(.in)').forEach(function (el) { el.classList.add('in'); });
+  }, 1500);
+
+  // drill nodes: expand in place; outside click or Esc collapses; one open at a time
+  document.querySelectorAll('.drill').forEach(function (n) {
+    var t = n.querySelector('.title');
+    var hint = document.createElement('span');
+    hint.className = 'hint'; hint.textContent = 'click outside to close';
+    n.addEventListener('click', function (e) {
+      if (n.classList.contains('open')) return;
+      e.stopPropagation();
+      document.querySelectorAll('.drill.open').forEach(function (o) { o.classList.remove('open'); o.querySelector('.hint') && o.querySelector('.hint').remove(); });
+      n.classList.add('open');
+      t.appendChild(hint);
+      n.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    n.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !n.classList.contains('open')) n.click(); });
+  });
+  document.addEventListener('click', function (e) {
+    document.querySelectorAll('.drill.open').forEach(function (o) {
+      if (!o.contains(e.target)) { o.classList.remove('open'); var h = o.querySelector('.hint'); h && h.remove(); }
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') document.querySelectorAll('.drill.open').forEach(function (o) { o.classList.remove('open'); var h = o.querySelector('.hint'); h && h.remove(); });
+  });
+</script>
+</body>
+</html>

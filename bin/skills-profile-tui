@@ -1,0 +1,140 @@
+#!/bin/zsh
+# skills-profile-tui - pure-shell picker for skill profiles (no python, no server).
+# Collapsible tree: profiles expand to their skills; toggle either level.
+#   j/k or arrows  move      l/right  expand    h/left  collapse
+#   space          toggle    a        all on    n       all off
+#   enter          apply     q        quit (no changes)
+# Marks: [x] all linked  [~] partially linked  [ ] none
+emulate -L zsh
+setopt no_nomatch
+
+PROFILES=~/.claude/skill-profiles
+PROJ=".claude/skills"
+
+[ -t 0 ] || { echo "needs a terminal"; exit 1; }
+# refuse to run where PROJ would resolve to the GLOBAL skills dir (footgun:
+# running from ~ would rewrite ~/.claude/skills itself)
+if [ "$(cd "$(dirname "$PROJ")" 2>/dev/null && pwd)/skills" = "$(cd ~/.claude && pwd)/skills" ] || [ "$PWD" = "$HOME" ]; then
+  echo "you are in \$HOME - cd into a project directory first"; exit 1
+fi
+mkdir -p "$PROJ"
+
+typeset -A sel exp cnt      # sel[prof/skill]=1 ; exp[prof]=1 ; cnt[prof]=N
+typeset -a profs _f
+profs=("$PROFILES"/*(N/:t))
+(( ${#profs} )) || { echo "no profiles in $PROFILES"; exit 1; }
+
+# init selection from existing project links + per-profile skill counts
+for p in $profs; do
+  _f=("$PROFILES/$p"/*(N)); cnt[$p]=${#_f}
+  for s in "$PROFILES/$p"/*(N:t); do
+    [ -e "$PROJ/$s" ] && sel[$p/$s]=1
+  done
+done
+
+# ---- helpers ---------------------------------------------------------------
+prof_state() {                 # echoes: all | some | none
+  local p=$1 total=0 on=0
+  for s in "$PROFILES/$p"/*(N:t); do
+    total=$((total+1)); [ -n "${sel[$p/$s]}" ] && on=$((on+1))
+  done
+  if [ $on -eq 0 ]; then echo none
+  elif [ $on -eq $total ]; then echo all
+  else echo some; fi
+}
+
+typeset -a vis               # visible rows: "P<tab>prof" / "S<tab>prof<tab>skill"
+rebuild() {
+  vis=()
+  for p in $profs; do
+    vis+=("P	$p")
+    if [ -n "${exp[$p]}" ]; then
+      for s in "$PROFILES/$p"/*(N:t); do vis+=("S	$p	$s"); done
+    fi
+  done
+}
+
+cur=1; top=1
+draw() {
+  local rows=$((LINES-3)) i line typ p s mark st
+  [ $cur -lt $top ] && top=$cur
+  [ $cur -gt $((top+rows-1)) ] && top=$((cur-rows+1))
+  printf '\e[H\e[2J'
+  printf '\e[1mskills-profile\e[0m  %s   [space] toggle  [l/h] open/close  [enter] apply  [q] quit\n' "$(pwd)"
+  for ((i=top; i<top+rows && i<=${#vis}; i++)); do
+    line=$vis[$i]; typ=${line%%	*}
+    if [ "$typ" = P ]; then
+      p=${line#P	}
+      st=$(prof_state "$p")
+      case $st in all) mark="[x]";; some) mark="[~]";; none) mark="[ ]";; esac
+      arrow="+"; [ -n "${exp[$p]}" ] && arrow="-"
+      if [ $i -eq $cur ]; then printf '\e[7m'; fi
+      printf ' %s %s \e[1m%-18s\e[0m %s skills\e[0m\n' "$arrow" "$mark" "$p" "${cnt[$p]}"
+    else
+      p=${${line#S	}%%	*}; s=${line##*	}
+      mark="[ ]"; [ -n "${sel[$p/$s]}" ] && mark="[x]"
+      if [ $i -eq $cur ]; then printf '\e[7m'; fi
+      printf '      %s %s\e[0m\n' "$mark" "$s"
+    fi
+  done
+}
+
+toggle() {
+  local line=$vis[$cur] typ=${vis[$cur]%%	*} p s
+  if [ "$typ" = P ]; then
+    p=${line#P	}
+    local st=$(prof_state "$p")
+    for s in "$PROFILES/$p"/*(N:t); do
+      if [ "$st" = all ]; then unset "sel[$p/$s]"; else sel[$p/$s]=1; fi
+    done
+  else
+    p=${${line#S	}%%	*}; s=${line##*	}
+    if [ -n "${sel[$p/$s]}" ]; then unset "sel[$p/$s]"; else sel[$p/$s]=1; fi
+  fi
+}
+
+# diff + state writing live in skills-profile's shared engine; pipe it the
+# full selection as "profile/skill" lines
+apply() {
+  local k
+  for k in ${(k)sel}; do print -r -- "$k"; done | "${0:h}/skills-profile" _apply
+}
+
+# ---- main loop -------------------------------------------------------------
+rebuild
+tput smcup
+trap 'tput rmcup' EXIT INT TERM
+while true; do
+  draw
+  read -sk1 key
+  if [ "$key" = $'\e' ]; then
+    read -sk2 -t 0.05 rest 2>/dev/null
+    case $rest in
+      '[A') key=k;; '[B') key=j;; '[C') key=l;; '[D') key=h;;
+    esac
+  fi
+  case $key in
+    j) [ $cur -lt ${#vis} ] && cur=$((cur+1));;
+    k) [ $cur -gt 1 ] && cur=$((cur-1));;
+    l) line=$vis[$cur]; [ "${line%%	*}" = P ] && { exp[${line#P	}]=1; rebuild; };;
+    h) line=$vis[$cur]
+       if [ "${line%%	*}" = P ]; then unset "exp[${line#P	}]"
+       else p=${${line#S	}%%	*}; unset "exp[$p]"
+            for ((i=1;i<=${#vis};i++)); do [ "$vis[$i]" = "P	$p" ] && cur=$i; done
+       fi; rebuild;;
+    a) for p in $profs; do for s in "$PROFILES/$p"/*(N:t); do sel[$p/$s]=1; done; done;;
+    n) sel=();;
+    ' ') toggle;;
+    $'\r'|$'\n')
+      tput rmcup; trap - EXIT; apply
+      # launch claude with the fresh selection - unless already inside a session
+      if [ -n "${CLAUDECODE:-}" ]; then
+        echo "inside a claude session - restart it to load the new selection"
+      else
+        # SP_CLAUDE_FLAGS overrides (set empty for a plain launch)
+        exec claude ${=SP_CLAUDE_FLAGS---dangerously-skip-permissions}
+      fi
+      exit 0;;
+    q) exit 0;;
+  esac
+done

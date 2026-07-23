@@ -1,0 +1,242 @@
+#!/bin/bash
+# skills-profile - per-project skill loading from ~/.claude/skill-profiles/
+#
+#   skills-profile migrate [--dry-run]   one-shot: move domain symlinks out of global ~/.claude/skills
+#   skills-profile use <prof...>         link profiles' skills into ./.claude/skills
+#   skills-profile off <prof...>         unlink a profile from ./.claude/skills
+#   skills-profile list                  show available profiles + counts
+#   skills-profile status                show active profiles in this project (recomputed live)
+#   skills-profile pick                  terminal picker (zsh TUI)
+#   skills-profile pick-html             browser picker (bash + one-shot nc)
+#   skills-profile update                git pull every repo in ~/.claude/vendor
+#
+# State cache in ./.claude/skills-profile.json - always recomputed from the
+# actual links (the links are the truth; the json is a convenience cache).
+set -euo pipefail
+shopt -s nullglob
+SKILLS=~/.claude/skills
+PROFILES=~/.claude/skill-profiles
+PROJ=".claude/skills"
+STATE=".claude/skills-profile.json"
+cmd=${1:-list}; shift || true
+
+# name-based routing (checked before path rules)
+HR_NAMES="chro-advisor interview-system-designer culture-architect change-management"
+DB_NAMES="database-designer sql-database-assistant database-schema-designer migration-architect snowflake-development"
+
+profile_for() {
+  local name="$1" tgt="$2"
+  for n in $HR_NAMES; do [ "$name" = "$n" ] && { echo hr; return; }; done
+  for n in $DB_NAMES; do [ "$name" = "$n" ] && { echo db; return; }; done
+  case "$tgt" in
+    *tradermonty*)                                   echo trading ;;
+    *JoelLewis*trading-operations*)                  echo trading ;;
+    *JoelLewis*)                                     echo investing ;;
+    *openaccountant*)                                echo accounting ;;
+    *supabase*)                                      echo db ;;
+    *vercel-labs*)                                   echo frontend ;;
+    *rust-skills*)                                   echo coding ;;
+    *GRC-Claude-Skills*|*claude-grc*)                echo compliance ;;
+    *claude-skills-collection/research*)             echo research ;;
+    *claude-skills-collection/marketing*)            echo marketing ;;
+    *claude-skills-collection/finance*)              echo finance ;;
+    *claude-skills-collection/business-growth*)      echo sales-gtm ;;
+    *claude-skills-collection/commercial*)           echo sales-gtm ;;
+    *claude-skills-collection/compliance-os*)        echo compliance ;;
+    *claude-skills-collection/c-level-advisor*)      echo business-clevel ;;
+    *claude-skills-collection/business-operations*)  echo business-clevel ;;
+    *claude-skills-collection/engineering*)          echo engineering ;;
+    *) echo "" ;;
+  esac
+}
+
+# refuse project-level commands anywhere ./.claude/skills would resolve to the
+# GLOBAL skills dir itself (running from ~ would rewrite ~/.claude/skills)
+require_project() {
+  if [ "$PWD" = "$HOME" ] || [ "$(cd "$(dirname "$PROJ")" 2>/dev/null && pwd)/skills" = "$(cd ~/.claude && pwd)/skills" ]; then
+    echo "cd into a project directory first"; exit 1
+  fi
+}
+
+# shared state writer: recompute {active, partial} from the links on disk
+write_state() {
+  local pd prof total on s active="" partial=""
+  for pd in "$PROFILES"/*/; do
+    prof=${pd%/}; prof=${prof##*/}; total=0; on=0
+    for s in "$pd"*; do
+      total=$((total+1))
+      [ -e "$PROJ/${s##*/}" ] && on=$((on+1))
+    done
+    if [ "$on" -gt 0 ] && [ "$on" -eq "$total" ]; then active="$active\"$prof\", "
+    elif [ "$on" -gt 0 ]; then partial="$partial\"$prof\", "
+    fi
+  done
+  printf '{\n "active": [%s],\n "partial": [%s]\n}\n' "${active%, }" "${partial%, }" > "$STATE"
+}
+
+# shared diff engine for the pickers: $1 = file holding the FULL selection as
+# "profile/skill" lines. Links what's listed, unlinks what's not; never touches
+# real files or names the warehouse doesn't know.
+apply_selection() {
+  local sel="$1" pd prof s name tgt linked=0 removed=0
+  mkdir -p "$PROJ"
+  for pd in "$PROFILES"/*/; do
+    prof=${pd%/}; prof=${prof##*/}
+    for s in "$pd"*; do
+      name=${s##*/}
+      if grep -qxF "$prof/$name" "$sel"; then
+        if [ ! -e "$PROJ/$name" ]; then
+          tgt="$s"; [ -L "$s" ] && tgt=$(readlink "$s")
+          ln -s "$tgt" "$PROJ/$name"; linked=$((linked+1))
+        fi
+      elif [ -L "$PROJ/$name" ]; then
+        rm "$PROJ/$name"; removed=$((removed+1))
+      fi
+    done
+  done
+  write_state
+  echo "linked +$linked  removed -$removed"
+}
+
+case "$cmd" in
+  migrate)
+    dry=${1:-}; moved=0; kept=0
+    for link in "$SKILLS"/*; do
+      name=${link##*/}
+      [ -L "$link" ] || { kept=$((kept+1)); continue; }
+      tgt=$(readlink "$link")
+      prof=$(profile_for "$name" "$tgt")
+      [ -z "$prof" ] && { kept=$((kept+1)); continue; }
+      if [ "$dry" = "--dry-run" ]; then echo "$name -> $prof"
+      else mkdir -p "$PROFILES/$prof"; mv "$link" "$PROFILES/$prof/$name"; fi
+      moved=$((moved+1))
+    done
+    echo "moved: $moved  kept-global: $kept"
+    ;;
+  use)
+    [ $# -ge 1 ] || { echo "usage: skills-profile use <profile...>"; exit 1; }
+    require_project
+    mkdir -p "$PROJ"
+    for prof in "$@"; do
+      [ -d "$PROFILES/$prof" ] || { echo "no such profile: $prof"; exit 1; }
+      n=0
+      for s in "$PROFILES/$prof"/*; do
+        name=${s##*/}
+        if [ ! -e "$PROJ/$name" ]; then
+          tgt="$s"; [ -L "$s" ] && tgt=$(readlink "$s")
+          ln -s "$tgt" "$PROJ/$name"; n=$((n+1))
+        fi
+      done
+      echo "linked $prof: $n skills"
+    done
+    write_state
+    ;;
+  off)
+    [ $# -ge 1 ] || { echo "usage: skills-profile off <profile...>"; exit 1; }
+    require_project
+    for prof in "$@"; do
+      n=0
+      for s in "$PROFILES/$prof"/*; do
+        name=${s##*/}
+        [ -L "$PROJ/$name" ] && { rm "$PROJ/$name"; n=$((n+1)); }
+      done
+      echo "unlinked $prof: $n skills"
+    done
+    write_state
+    ;;
+  list)
+    for d in "$PROFILES"/*/; do
+      prof=${d%/}; prof=${prof##*/}
+      set -- "$d"*
+      printf '%-18s %s skills\n' "$prof" "$#"
+    done
+    ;;
+  status)
+    require_project
+    if [ -d "$PROJ" ]; then write_state; cat "$STATE"
+    else echo "no profiles active in $PWD"; fi
+    ;;
+  pick)
+    exec "$(dirname "$0")/skills-profile-tui"
+    ;;
+  _apply)
+    # hidden: the TUI pipes its selection ("profile/skill" lines) to stdin
+    require_project
+    sel=$(mktemp); cat > "$sel"
+    apply_selection "$sel"
+    rm -f "$sel"
+    ;;
+  pick-html)
+    # shell-only browser picker: generate HTML, one-shot nc listener catches the
+    # form POST, apply selection, launch claude. No python, no persistent server.
+    require_project
+    mkdir -p "$PROJ"
+    port=$((20000 + RANDOM % 40000))
+    html=$(mktemp /tmp/skills-pick.XXXXXX).html
+    reqf=$(mktemp); fifo=$(mktemp -u); mkfifo "$fifo"
+    {
+      cat <<HTML
+<!doctype html><html><head><meta charset="utf-8"><title>skills-profile</title><style>
+body{font:14px -apple-system,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;background:#111;color:#ddd}
+summary{display:grid;grid-template-columns:24px 180px 50px;gap:.5rem;align-items:baseline;padding:.45rem;border-bottom:1px solid #222;cursor:pointer;font-weight:600}
+summary:hover{background:#1a1a1a} .cnt{color:#6a6;font-weight:400}
+.sk{display:block;padding:.15rem 0 .15rem 3.2rem;color:#aaa} .sk:hover{background:#1a1a1a}
+button{margin-top:1rem;padding:.6rem 2rem;font-size:1rem;background:#2a6;border:0;border-radius:6px;color:#fff;cursor:pointer}
+</style>
+<script>function tog(cb){cb.closest('details').querySelectorAll('input[name=p]').forEach(function(c){c.checked=cb.checked})}</script>
+</head><body><h3>Select skills for: $PWD</h3>
+<form method="POST" action="http://127.0.0.1:$port/"><input type="hidden" name="done" value="1">
+HTML
+      for pd in "$PROFILES"/*/; do
+        prof=${pd%/}; prof=${prof##*/}
+        set -- "$pd"*
+        printf '<details><summary><input type="checkbox" onclick="event.stopPropagation();tog(this)"> %s <span class="cnt">%s</span></summary>\n' "$prof" "$#"
+        for s in "$pd"*; do
+          name=${s##*/}
+          chk=""; [ -e "$PROJ/$name" ] && chk="checked"
+          printf '<label class="sk"><input type="checkbox" name="p" value="%s/%s" %s> %s</label>\n' "$prof" "$name" "$chk" "$name"
+        done
+        printf '</details>\n'
+      done
+      printf '<button>Apply &amp; launch claude</button></form></body></html>\n'
+    } > "$html"
+    exec 3<>"$fifo"                 # hold fifo open r/w so nc starts without blocking
+    nc -l 127.0.0.1 "$port" <&3 > "$reqf" &
+    ncpid=$!
+    if [ -z "${SP_NO_OPEN:-}" ]; then
+      open "$html" 2>/dev/null || xdg-open "$html" 2>/dev/null || echo "open $html in your browser"
+    fi
+    echo "picker: file://$html  (waiting for Apply...)"
+    until grep -q "done=1" "$reqf" 2>/dev/null; do sleep 0.2; done
+    printf 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<body style="font-family:sans-serif;background:#111;color:#6a6"><h2>Applied. Claude is launching in your terminal - close this tab.</h2></body>' >&3
+    exec 3>&-                        # EOF -> nc flushes response and exits
+    wait $ncpid 2>/dev/null
+    selfile=$(mktemp)
+    tr -d '\r' < "$reqf" | awk 'b{print} /^$/{b=1}' | tail -1 | tr '&' '\n' \
+      | grep '^p=' | sed 's/^p=//; s/%2[Ff]/\//g' > "$selfile" || true
+    apply_selection "$selfile"
+    rm -f "$reqf" "$html" "$selfile" "$fifo"
+    if [ -n "${CLAUDECODE:-}" ]; then
+      echo "inside a claude session - restart it to load the new selection"
+    else
+      # SP_CLAUDE_FLAGS overrides (set empty for a plain launch); word-split intended
+      # shellcheck disable=SC2086
+      exec claude ${SP_CLAUDE_FLAGS---dangerously-skip-permissions}
+    fi
+    ;;
+  update)
+    # pull every vendored skill repo; symlinked profiles + project links see the
+    # new content immediately (no relink needed)
+    VENDOR="$HOME/.claude/vendor"
+    [ -d "$VENDOR" ] || { echo "no vendor dir ($VENDOR)"; exit 0; }
+    for repo in "$VENDOR"/*/; do
+      [ -d "$repo/.git" ] || continue
+      name=${repo%/}; name=${name##*/}
+      out=$(git -C "$repo" pull --ff-only 2>&1 | tail -1) || true
+      printf '%-50s %s\n' "$name" "$out"
+    done
+    ;;
+  *)
+    echo "usage: skills-profile {migrate [--dry-run] | use <p...> | off <p...> | list | status | pick | pick-html | update}"; exit 1
+    ;;
+esac
