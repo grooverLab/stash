@@ -42,9 +42,13 @@ Claude Code loads **every skill in `~/.claude/skills/` into every session** -
 and the skill listing has a token budget (about 1% of the context window).
 Past it, descriptions get truncated and the overflow shows **name-only**. A
 name-only skill barely auto-triggers: Claude cannot match "analyze my churn" to
-`churn-prevention` without its description. Installing more skills silently
-makes ALL your skills trigger worse. Deleting skills you paid tokens to find is
-not a fix - loading them per project is.
+`churn-prevention` without its description.
+
+So every skill you install makes Claude a little more blind: the budget stays
+fixed, the descriptions competing for it grow, and more of your collection
+drops out of Claude's view entirely. The paradox of the well-stocked toolbox -
+the more you own, the less Claude can see. Deleting skills you paid tokens to
+find is not a fix - loading them per project is.
 
 ## 30-second start
 
