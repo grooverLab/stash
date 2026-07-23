@@ -318,8 +318,13 @@ HTML
     # generate stash.index.tsv from the local warehouse - run inside your stash
     # repo checkout, commit the result. Columns:
     #   domain <TAB> name <TAB> owner/repo <TAB> path-in-repo <TAB> sha <TAB> description
+    #
+    # Skills with a git source repo become POINTER rows (the sync Action keeps
+    # them tracking the author). Skills WITHOUT one are VENDORED: copied into
+    # <stash-repo>/skills/<domain>/<name> when SP_VENDOR_INTO + SP_SELF_REPO
+    # are set (publish sets both), so the stash repo is self-contained.
     out=${1:-stash.index.tsv}
-    tmp=$(mktemp); rows=0; skipped=0
+    tmp=$(mktemp); rows=0; skipped=0; vendored=0
     for pd in "$PROFILES"/*/; do
       domain=${pd%/}; domain=${domain##*/}
       for s in "$pd"*; do
@@ -327,11 +332,27 @@ HTML
         # walk up to the enclosing git repo
         rdir="$tgt"
         while [ "$rdir" != "/" ] && [ ! -d "$rdir/.git" ]; do rdir=$(dirname "$rdir"); done
-        if [ "$rdir" = "/" ]; then skipped=$((skipped+1)); continue; fi
-        url=$(git -C "$rdir" remote get-url origin 2>/dev/null) || { skipped=$((skipped+1)); continue; }
-        repo=$(echo "$url" | sed -E 's#^(https://[^/]+/|git@[^:]+:)##; s#\.git$##')
-        rpath=${tgt#"$rdir"/}
-        sha=$(git -C "$rdir" rev-parse HEAD 2>/dev/null || echo "")
+        repo=""; rpath=""; sha=""
+        if [ "$rdir" != "/" ]; then
+          url=$(git -C "$rdir" remote get-url origin 2>/dev/null || echo "")
+          if [ -n "$url" ]; then
+            repo=$(echo "$url" | sed -E 's#^(https://[^/]+/|git@[^:]+:)##; s#\.git$##')
+            rpath=${tgt#"$rdir"/}
+            sha=$(git -C "$rdir" rev-parse HEAD 2>/dev/null || echo "")
+          fi
+        fi
+        if [ -z "$repo" ]; then
+          # no source repo: vendor the skill into the stash repo itself
+          if [ -n "${SP_VENDOR_INTO:-}" ] && [ -n "${SP_SELF_REPO:-}" ] && [ -d "$tgt" ]; then
+            mkdir -p "$SP_VENDOR_INTO/skills/$domain"
+            rm -rf "$SP_VENDOR_INTO/skills/$domain/$name"   # republish: replace, never nest
+            cp -R "$tgt" "$SP_VENDOR_INTO/skills/$domain/$name"
+            repo="$SP_SELF_REPO"; rpath="skills/$domain/$name"; sha=""
+            vendored=$((vendored+1))
+          else
+            skipped=$((skipped+1)); continue
+          fi
+        fi
         desc=""
         if [ -f "$tgt/SKILL.md" ]; then
           # handles inline, quoted, and folded (>, |) YAML description styles
@@ -346,7 +367,7 @@ HTML
       done
     done
     sort "$tmp" > "$out"; rm -f "$tmp"
-    echo "wrote $out: $rows skills ($skipped skipped - not inside a git repo)"
+    echo "wrote $out: $rows skills ($vendored vendored into the stash repo, $skipped skipped)"
     ;;
   _fetch-index)
     # hidden test hook: fetch the configured stash index to $1 (default stdout)
@@ -468,15 +489,17 @@ HTML
       git init -q "$tmpd/repo"
       git -C "$tmpd/repo" remote add origin "https://github.com/$owner/$rname"
     fi
-    "$0" index "$tmpd/repo/stash.index.tsv"
+    SP_VENDOR_INTO="$tmpd/repo" SP_SELF_REPO="$owner/$rname" "$0" index "$tmpd/repo/stash.index.tsv"
     mkdir -p "$tmpd/repo/.github/workflows"
     tpl="$(cd "$(dirname "$(readlink "$0" || echo "$0")")/.." && pwd)/templates/stash-sync.yml"
     [ -f "$tpl" ] && cp "$tpl" "$tmpd/repo/.github/workflows/stash-sync.yml"
-    git -C "$tmpd/repo" add -- stash.index.tsv .github 2>/dev/null
+    git -C "$tmpd/repo" add -- stash.index.tsv .github skills 2>/dev/null || git -C "$tmpd/repo" add -- stash.index.tsv .github 2>/dev/null
     if git -C "$tmpd/repo" diff --cached --quiet 2>/dev/null; then
       echo "nothing changed - $owner/$rname already current"
     else
       git -C "$tmpd/repo" commit -q -m "stash: index + sync action"
+      # vendored skill payloads can exceed git's default http buffer
+      git -C "$tmpd/repo" config http.postBuffer 157286400
       git -C "$tmpd/repo" push -q -u origin HEAD:main
       echo "published: https://github.com/$owner/$rname"
     fi
