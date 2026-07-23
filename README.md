@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/stash-header-dark-animated.png">
+  <img src="docs/assets/stash-header-light-animated.png" alt="stash - load only the skills each session needs" width="100%">
+</picture>
+
 # stash
 
 **Per-project skill manager for Claude Code.** Load only the skills each
