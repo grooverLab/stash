@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Company-OS org chart - the spine every business runs on</title>
+<meta name="description" content="Top-down organizational chart of the Company-OS spine: 12 functions, each owned by a C-suite skill, drilling into divisions, responsibilities, and the skills that do the work.">
+<style>
+  :root {
+    color-scheme: light;
+    --primary:#ff385c; --primary-active:#e00b41; --primary-soft:#ffe1e7;
+    --ink:#222; --body:#444; --muted:#6a6a6a; --muted-soft:#929292;
+    --hairline:#dcdcdc; --hairline-soft:#ececec;
+    --canvas:#fff; --soft:#f7f7f7; --strong:#f0f0f0; --chip:#f2f2f2;
+    --shadow:rgba(0,0,0,.02) 0 0 0 1px, rgba(0,0,0,.05) 0 4px 14px;
+    --font:'Airbnb Cereal VF',Circular,Inter,-apple-system,system-ui,Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --ink:#f2f0f1; --body:#cbc9ca; --muted:#9a9899; --muted-soft:#6f6d6e;
+    --hairline:#333; --hairline-soft:#282628;
+    --canvas:#161414; --soft:#1e1c1d; --strong:#262324; --chip:#242122;
+    --primary-soft:#3a1620;
+    --shadow:rgba(0,0,0,.5) 0 0 0 1px, rgba(0,0,0,.6) 0 4px 14px;
+  }
+  * { box-sizing:border-box; margin:0; }
+  html { scroll-behavior:smooth; }
+  body { font:16px/1.55 var(--font); background:var(--canvas); color:var(--body); }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 24px; }
+  a { color:inherit; text-decoration:none; }
+
+  nav { height:72px; border-bottom:1px solid var(--hairline-soft); display:flex; align-items:center;
+        position:sticky; top:0; background:var(--canvas); z-index:30; }
+  nav .wrap { display:flex; align-items:center; justify-content:space-between; width:100%; }
+  .brand { color:var(--primary); font-weight:700; font-size:20px; display:flex; align-items:center; gap:8px; }
+  .brand svg { width:26px; height:26px; }
+  .brand small { color:var(--muted); font-weight:500; font-size:13px; }
+  .navr { display:flex; gap:18px; align-items:center; font-size:15px; font-weight:600; }
+  .navr a { color:var(--muted); } .navr a:hover { color:var(--ink); }
+  .tbtn { width:38px; height:38px; border-radius:9999px; border:1px solid var(--hairline);
+          background:var(--canvas); color:var(--ink); cursor:pointer; }
+
+  header { text-align:center; padding:56px 0 8px; }
+  h1 { font-size:30px; font-weight:700; color:var(--ink); letter-spacing:-.4px; }
+  h1 em { font-style:normal; color:var(--primary); }
+  .lede { color:var(--muted); max-width:60ch; margin:12px auto 0; }
+  .hint { color:var(--muted-soft); font-size:13px; margin-top:14px; }
+
+  /* apex */
+  .apex { display:flex; flex-direction:column; align-items:center; padding:40px 0 8px; }
+  .ceo { background:var(--ink); color:var(--canvas); border-radius:16px; padding:14px 26px; text-align:center; }
+  .ceo b { font-size:17px; } .ceo span { display:block; font-size:12px; opacity:.7; margin-top:2px; }
+  .spoke { width:1px; height:26px; background:var(--hairline); }
+
+  /* function grid */
+  .fns { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; padding:8px 0 64px; }
+  @media(max-width:900px){ .fns{ grid-template-columns:repeat(2,1fr);} }
+  @media(max-width:560px){ .fns{ grid-template-columns:1fr;} }
+  .fn { background:var(--canvas); border:1px solid var(--hairline); border-radius:16px; padding:16px;
+        cursor:pointer; transition:border-color .2s, transform .15s, box-shadow .2s; }
+  .fn:hover { border-color:var(--primary); transform:translateY(-2px); box-shadow:var(--shadow); }
+  .fn .fid { font:12px var(--mono); color:var(--muted-soft); }
+  .fn h3 { font-size:16px; color:var(--ink); margin:2px 0 6px; }
+  .fn .owner { display:inline-block; font-size:12px; font-weight:600; color:var(--primary);
+               background:var(--primary-soft); border-radius:9999px; padding:3px 10px; }
+  .fn .divs { color:var(--muted); font-size:13px; margin-top:10px; }
+  .fn.gapf { border-style:dashed; }
+
+  /* drawer */
+  .scrim { position:fixed; inset:0; background:rgba(0,0,0,.3); opacity:0; pointer-events:none;
+           transition:opacity .25s; z-index:40; }
+  .scrim.on { opacity:1; pointer-events:auto; }
+  .drawer { position:fixed; top:0; right:0; height:100%; width:min(680px,94vw); background:var(--canvas);
+            border-left:1px solid var(--hairline); transform:translateX(100%); transition:transform .28s ease;
+            z-index:50; overflow-y:auto; overflow-x:hidden; }
+  .drawer.on { transform:none; }
+  .dhead { position:sticky; top:0; background:var(--canvas); border-bottom:1px solid var(--hairline-soft);
+           padding:22px 26px; display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+  .dhead .fid { font:12px var(--mono); color:var(--muted-soft); }
+  .dhead h2 { font-size:22px; color:var(--ink); margin:2px 0 8px; }
+  .dhead .owner { font-size:13px; font-weight:600; color:var(--primary); background:var(--primary-soft);
+                  border-radius:9999px; padding:4px 12px; }
+  .dclose { border:1px solid var(--hairline); background:var(--canvas); color:var(--ink); border-radius:9999px;
+            width:36px; height:36px; cursor:pointer; flex:none; font-size:16px; }
+  .dbody { padding:8px 26px 60px; }
+  .div { border-bottom:1px solid var(--hairline-soft); padding:20px 0; }
+  .div:last-child { border-bottom:0; }
+  .div h4 { font-size:15px; color:var(--ink); display:flex; align-items:baseline; gap:8px; }
+  .div h4 .rail { width:8px; height:8px; border-radius:9999px; background:var(--primary); flex:none; transform:translateY(-1px); }
+  .resp { color:var(--body); font-size:14px; margin:8px 0 12px; padding-left:16px; }
+  .resp li { margin:3px 0; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { font:12px var(--mono); background:var(--chip); border:1px solid var(--hairline-soft);
+          border-radius:8px; padding:3px 9px; color:var(--body); }
+  .chip.gap { color:var(--primary); border-color:var(--primary); background:var(--primary-soft); }
+  .legend { color:var(--muted); font-size:13px; padding:20px 0 0; display:flex; gap:20px; flex-wrap:wrap; }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .dot { width:9px; height:9px; border-radius:9999px; display:inline-block; }
+
+  footer { border-top:1px solid var(--hairline-soft); color:var(--muted); font-size:14px; margin-top:24px; }
+  footer .wrap { padding:24px 0; display:flex; gap:18px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a class="brand" href="../">
+    <svg viewBox="0 0 96 96"><rect x="4" y="66" width="88" height="22" rx="11" fill="#e6e6e6"/><rect x="8" y="59" width="80" height="17" rx="9" fill="#c2c2c2"/><rect x="8" y="40" width="80" height="17" rx="9" fill="#a8a8a8"/><rect x="8" y="21" width="80" height="17" rx="9" fill="#ff385c"/></svg>
+    stash <small>/ Company-OS</small>
+  </a>
+  <div class="navr">
+    <a href="../">Home</a>
+    <a href="https://github.com/grooverLab/stash">GitHub</a>
+    <button class="tbtn" id="tbtn" title="toggle dark">&#9680;</button>
+  </div>
+</div></nav>
+
+<header class="wrap">
+  <h1>The company as an <em>org chart of skills</em></h1>
+  <p class="lede">Top-down: the company, its 12 functions, each owned by a C-suite skill,
+  drilling into divisions, responsibilities, and the skills and workflows that do the work.
+  The universal spine - bolt a business vertical on top to launch any company.</p>
+  <p class="hint">Click any function to open its full org. Esc or click away to close.</p>
+</header>
+
+<main class="wrap">
+  <div class="apex">
+    <div class="ceo"><b>Company / Founder Office</b><span>owner: ceo-advisor + chief-of-staff (orchestrator)</span></div>
+    <div class="spoke"></div>
+  </div>
+  <div class="fns" id="fns"></div>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--primary)"></i> skill exists in the warehouse</span>
+    <span><i class="dot" style="background:var(--muted-soft)"></i> GAP - compose a skill</span>
+    <span>dashed card = function is mostly a vertical overlay (business-type-specific)</span>
+  </div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+<footer><div class="wrap">
+  <span>Company-OS spine - see docs/COMPANY-OS.md</span>
+  <a href="../">stash</a><a href="https://github.com/grooverLab/stash">GitHub</a>
+</div></footer>
+
+<script>
+// data: function -> {owner, gap?, divisions:[{name, responsibilities:[], skills:[{n, gap?}]}]}
+const ORG = [
+ {id:"F1", name:"Strategy, Vision & Governance", owner:"ceo-advisor", divisions:[
+   {name:"Vision & Strategy", resp:["mission, ICP, positioning","business model + unit economics","annual/quarterly goals (OKRs/Rocks)"], skills:["ceo-advisor","scenario-war-room","founder-coach"]},
+   {name:"Capital & Fundraising", resp:["bootstrap vs raise","runway planning","investor materials + reporting"], skills:["cfo-advisor","board-deck-builder"]},
+   {name:"Governance & Board", resp:["board formation + meetings","decision rights + cadence","cap table oversight"], skills:["board-meeting","boardroom","office-hours"]},
+   {name:"Corp Dev / M&A", resp:["partnerships strategy","M&A diligence + integration"], skills:["ma-playbook","partnerships-architect"]},
+ ]},
+ {id:"F2", name:"Product / Offering", owner:"cpo-advisor", divisions:[
+   {name:"Discovery & Research", resp:["customer discovery","problem-solution validation","requirements"], skills:["product-research","competitive-intel","research"]},
+   {name:"Roadmap & PM", resp:["prioritization","release management","PMF measurement"], skills:["cpo-advisor","epic-design"]},
+   {name:"Design", resp:["UX, flows, prototypes","design system"], skills:["ui-ux-pro-max","frontend-design","impeccable"]},
+   {name:"Build & QA", resp:["MVP build","testing + quality"], skills:["senior-fullstack","tdd-guide","code-reviewer","GAP: hard-goods/clinical realization"]},
+ ]},
+ {id:"F3", name:"Marketing & Demand", owner:"cmo-advisor", divisions:[
+   {name:"Demand Generation", resp:["paid media","SEO / AEO","email + lifecycle","CRO"], skills:["paid-ads","seo-audit","aeo","email-sequence","page-cro","marketing-demand-acquisition"]},
+   {name:"Content & Brand", resp:["content production","brand + positioning","PR + social","the blog pipeline"], skills:["content-production","content-humanizer","blog-write","social-media-manager","x-twitter-growth","brand-guidelines"]},
+   {name:"Product Marketing", resp:["positioning + messaging","competitive intelligence","sales enablement","launches"], skills:["marketing-strategy-pmm","competitive-intel","launch-strategy","pricing-strategy"]},
+   {name:"Creative & Design", resp:["copywriting","graphics generation","video + motion","UI/UX assets"], skills:["copywriting","landing-page-copy","canvas-design","gpt-image-2","video-backend","brag"]},
+ ]},
+ {id:"F4", name:"Sales & Business Development", owner:"cro-advisor", divisions:[
+   {name:"Pipeline / Top-of-funnel", resp:["prospecting","qualification","cold outreach"], skills:["cold-email","sales-engineer","campaign-copywriting"]},
+   {name:"Closing / Account Exec", resp:["quoting + proposals","contracts / order capture","forecasting"], skills:["rfp-responder","contract-and-proposal-writer","deal-desk"]},
+   {name:"RevOps", resp:["pipeline health","forecast accuracy","comp / territory"], skills:["revenue-operations","commercial-forecaster","commercial-policy"]},
+   {name:"Partnerships / Channel", resp:["channel economics","partner programs"], skills:["partnerships-architect","channel-economics"]},
+ ]},
+ {id:"F5", name:"Operations / Delivery", owner:"coo-advisor", divisions:[
+   {name:"Process & Delivery", resp:["core workflow definition","SLAs + delivery governance"], skills:["process-mapper","coo-advisor"]},
+   {name:"Capacity & Resources", resp:["scheduling","capacity planning"], skills:["capacity-planner"]},
+   {name:"Supply & Procurement", resp:["sourcing","supplier / vendor management","procurement"], skills:["vendor-management","procurement-optimizer","GAP: physical supply chain = vertical"]},
+   {name:"Fulfillment", resp:["deliver the promise","logistics / warehousing"], skills:["GAP: 3PL / production = vertical overlay"]},
+ ]},
+ {id:"F6", name:"Customer Success & Support", owner:"cco-advisor", divisions:[
+   {name:"Support", resp:["contact channels","ticketing + KB / FAQ"], skills:["cco-advisor"]},
+   {name:"Onboarding", resp:["activation","time-to-value","first-run"], skills:["onboarding-cro"]},
+   {name:"Success & Retention", resp:["health scoring","churn prevention","expansion"], skills:["customer-success-manager","churn-prevention"]},
+   {name:"Community", resp:["community programs","VOC / CSAT / NPS"], skills:["social-media-manager","GAP: community-ops"]},
+ ]},
+ {id:"F7", name:"Finance & Accounting", owner:"cfo-advisor", divisions:[
+   {name:"FP&A & Modeling", resp:["model + unit economics","budgeting / forecasting","runway + cash"], skills:["financial-analyst","cfo-advisor","saas-metrics-coach","runway-calculator"]},
+   {name:"Accounting & Bookkeeping", resp:["AR / invoicing","AP / expenses","GL + reporting","month-end close"], skills:["month-end-close","gl-reconciler","cash-flow-forecast","profit-loss"]},
+   {name:"Treasury & Cash", resp:["banking","working capital","controls"], skills:["cfo-advisor","GAP: treasury-ops"]},
+   {name:"Tax", resp:["quarterly / annual tax","sales-tax nexus","tax-loss harvesting"], skills:["quarterly-taxes","sales-tax-nexus","tax-prep"]},
+ ]},
+ {id:"F8", name:"Legal, Risk & Compliance", owner:"general-counsel-advisor", divisions:[
+   {name:"Entity & Contracts", resp:["form entity (LLC/C-corp)","EIN + licenses","contracts / ToS / privacy"], skills:["general-counsel-advisor","legal-advisor","GAP: entity-formation (blocks GATE 1)"]},
+   {name:"Regulatory & Compliance", resp:["SOC 2 / ISO / HIPAA / GDPR","audit prep","framework mapping"], skills:["soc-2","iso-27001","hipaa","gdpr","pci-dss","sox-itgc","compliance-os"]},
+   {name:"Risk", resp:["enterprise risk","resiliency / continuity","operational risk"], skills:["operational-risk","forward-risk","ciso-advisor"]},
+   {name:"Privacy & Security", resp:["data privacy","IP protection","insurance"], skills:["data-privacy-expert","gdpr-audit-prep","GAP: business-insurance"]},
+ ]},
+ {id:"F9", name:"People / HR", owner:"chro-advisor", divisions:[
+   {name:"Talent & Recruiting", resp:["hiring plan","interview systems","sourcing + selection"], skills:["chro-advisor","interview-system-designer","hr-pro"]},
+   {name:"Comp & Benefits", resp:["salary bands","equity / options","payroll setup"], skills:["chro-advisor","GAP: payroll-ops"]},
+   {name:"Culture", resp:["values -> behaviors","culture health","rituals"], skills:["culture-architect"]},
+   {name:"Performance & Org Design", resp:["rating calibration","org structure","change management"], skills:["change-management","chro-advisor"]},
+ ]},
+ {id:"F10", name:"Technology, Data & Security", owner:"cto-advisor", divisions:[
+   {name:"Infra & Engineering", resp:["architecture","build / deploy / operate","tooling"], skills:["senior-architect","senior-devops","kubernetes-operator","ci-cd-pipeline-builder"]},
+   {name:"Data & Analytics", resp:["data governance","BI / dashboards","data science"], skills:["senior-data-engineer","dataviz","database-designer"]},
+   {name:"Security", resp:["cybersecurity","IT risk + resilience","incident response"], skills:["ciso-advisor","cloud-security","threat-detection","incident-response"]},
+   {name:"IT", resp:["business systems","access management","backups"], skills:["senior-secops","GAP: it-ops"]},
+ ]},
+ {id:"F11", name:"Admin, Facilities & Assets", owner:"coo-advisor", gap:true, divisions:[
+   {name:"Procurement & Records", resp:["general procurement","recordkeeping","knowledge management"], skills:["procurement-optimizer","knowledge-ops"]},
+   {name:"Facilities", resp:["workspace","corporate travel"], skills:["GAP: facilities-ops (overlay)"]},
+   {name:"Assets & EHS", resp:["fixed assets","EHS (environmental/health/safety)"], skills:["GAP: EHS = manufacturing vertical"]},
+ ]},
+ {id:"F12", name:"External Relations & Comms", owner:"ceo-advisor", gap:true, divisions:[
+   {name:"Communications & PR", resp:["corporate comms","brand reputation","internal comms"], skills:["internal-comms","social-media-manager"]},
+   {name:"Investor & Board Relations", resp:["investor updates","board relations"], skills:["board-deck-builder","GAP: investor-relations (overlay)"]},
+   {name:"Government & Industry", resp:["regulatory relations","industry bodies"], skills:["GAP: gov-relations (overlay)"]},
+ ]},
+];
+
+const $=s=>document.querySelector(s), fns=$("#fns"), drawer=$("#drawer"), scrim=$("#scrim");
+ORG.forEach((f,i)=>{
+  const c=document.createElement("div"); c.className="fn"+(f.gap?" gapf":"");
+  c.innerHTML=`<div class="fid">${f.id}</div><h3>${f.name}</h3>
+    <span class="owner">${f.owner}</span>
+    <div class="divs">${f.divisions.map(d=>d.name).join(" · ")}</div>`;
+  c.onclick=()=>open(i); fns.appendChild(c);
+});
+function open(i){
+  const f=ORG[i];
+  drawer.innerHTML=`<div class="dhead"><div>
+      <div class="fid">${f.id}</div><h2>${f.name}</h2><span class="owner">owner: ${f.owner}</span>
+    </div><button class="dclose" onclick="closeD()">&times;</button></div>
+    <div class="dbody">${f.divisions.map(d=>`
+      <div class="div"><h4><span class="rail"></span>${d.name}</h4>
+        <ul class="resp">${d.resp.map(r=>`<li>${r}</li>`).join("")}</ul>
+        <div class="chips">${d.skills.map(s=>{
+          const gap=s.startsWith("GAP");
+          return `<span class="chip${gap?" gap":""}">${gap?s:s}</span>`;
+        }).join("")}</div>
+      </div>`).join("")}</div>`;
+  drawer.classList.add("on"); scrim.classList.add("on"); drawer.setAttribute("aria-hidden","false");
+}
+function closeD(){ drawer.classList.remove("on"); scrim.classList.remove("on"); drawer.setAttribute("aria-hidden","true"); }
+scrim.onclick=closeD;
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeD(); });
+
+// theme
+(function(){ var s=localStorage.getItem("stash-theme"),
+  sys=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light", t=s||sys;
+  if(t==="dark") document.documentElement.dataset.theme="dark";
+  $("#tbtn").onclick=function(){ var d=document.documentElement.dataset.theme==="dark";
+    if(d){delete document.documentElement.dataset.theme; localStorage.setItem("stash-theme","light");}
+    else{document.documentElement.dataset.theme="dark"; localStorage.setItem("stash-theme","dark");}};
+})();
+</script>
+</body>
+</html>
