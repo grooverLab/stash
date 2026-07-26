@@ -165,8 +165,11 @@ nothing to re-install.**
   here updates them instantly.
 - Claude Code plugins are outside stash and keep auto-updating via their own
   marketplaces.
-- Selection changes need a session restart: the skill list is read once at
-  session start. `claude -c` resumes your conversation with the fresh scan.
+- Selection changes: run `/reload-skills` inside the session - it rescans the
+  skill dirs and reports what was added/removed, no restart (newer Claude Code;
+  `/reload-plugins` covers plugin components). Fallback: restart, and
+  `claude -c` resumes your conversation with the fresh scan. `SKILL.md` text
+  edits hot-load automatically.
 
 ## Cloud stash (optional)
 
@@ -231,8 +234,9 @@ Plugins are managed by Claude Code's plugin system and keep auto-updating;
 stash manages directory skills. They compose without conflict.
 
 **Do I need to restart Claude Code after changing the selection?**
-Yes - the list is read once at session start. `claude -c` resumes the same
-conversation with the fresh selection.
+Usually not: run `/reload-skills` in the session - it picks up skills added or
+changed on disk. If your Claude Code predates it, restart - `claude -c`
+resumes the same conversation.
 
 **Can teammates share a selection?**
 `.claude/skills-profile.json` is committable; links point into your home dir,

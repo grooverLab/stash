@@ -129,7 +129,7 @@ while true; do
       tput rmcup; trap - EXIT; apply
       # launch claude with the fresh selection - unless already inside a session
       if [ -n "${CLAUDECODE:-}" ]; then
-        echo "inside a claude session - restart it to load the new selection"
+        echo "inside a claude session - run /reload-skills to load the new selection (restart if it doesn't stick)"
       else
         # SP_CLAUDE_FLAGS overrides (set empty for a plain launch)
         exec claude ${=SP_CLAUDE_FLAGS---dangerously-skip-permissions}

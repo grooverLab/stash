@@ -48,7 +48,7 @@
     { "@type": "Question", "name": "Does stash work with plugin skills?",
       "acceptedAnswer": { "@type": "Answer", "text": "Plugins are managed by Claude Code's own plugin system and keep auto-updating; stash manages directory skills. The two compose without conflict." } },
     { "@type": "Question", "name": "Do I need to restart Claude Code after changing skills?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes, the skill list is read once at session start. claude -c resumes the same conversation with the fresh selection." } }
+      "acceptedAnswer": { "@type": "Answer", "text": "Usually not. Run /reload-skills inside the session - it picks up skills added or changed on disk. On older Claude Code versions restart instead; claude -c resumes the same conversation with the fresh selection." } }
   ]
 }
 </script>
@@ -381,7 +381,7 @@
             <div class="mnode mdec">already inside a claude session?</div>
             <div class="mrow">
               <div class="mcol"><div class="blbl">no</div><div class="mnode">launches claude</div></div>
-              <div class="mcol"><div class="blbl">yes</div><div class="mnode">restart note - claude -c keeps the chat</div></div>
+              <div class="mcol"><div class="blbl">yes</div><div class="mnode">prints: run /reload-skills to hot-load<br>restart is the fallback</div></div>
             </div>
           </div></div>
         </div>
@@ -402,8 +402,8 @@
             <div class="mnode">session skill list - read once at start</div>
             <div class="medge"></div>
             <div class="mnode">fewer skills listed = less context spent + sharper skill triggering</div>
-            <div class="mnote">Change selection mid-session? Links change, the session does not -
-            restart; claude -c resumes the same conversation with a fresh scan.</div>
+            <div class="mnote">Change selection mid-session? Run /reload-skills in the session to
+            hot-load it; restart (claude -c resumes the conversation) is the fallback.</div>
           </div></div>
         </div>
         <div class="edge"></div>
@@ -487,8 +487,9 @@
       <p>Plugins are managed by Claude Code's own plugin system and keep auto-updating; stash
       manages directory skills. The two compose without conflict.</p></details>
     <details class="faq"><summary>Do I need to restart Claude Code after changing skills?</summary>
-      <p>Yes - the skill list is read once at session start. <code>claude -c</code> resumes the
-      same conversation with the fresh selection.</p></details>
+      <p>Usually not - run <code>/reload-skills</code> in the session; it picks up skills added
+      or changed on disk. On older Claude Code versions restart instead; <code>claude -c</code>
+      resumes the same conversation with the fresh selection.</p></details>
   </div>
 </section>
 

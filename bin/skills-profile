@@ -307,7 +307,7 @@ HTML
     apply_selection "$selfile"
     rm -f "$reqf" "$html" "$selfile" "$fifo"
     if [ -n "${CLAUDECODE:-}" ]; then
-      echo "inside a claude session - restart it to load the new selection"
+      echo "inside a claude session - run /reload-skills to load the new selection (restart if it doesn't stick)"
     else
       # SP_CLAUDE_FLAGS overrides (set empty for a plain launch); word-split intended
       # shellcheck disable=SC2086
